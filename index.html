@@ -75,6 +75,9 @@ p { margin: 0; }
 .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
 .btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
 .btn-text { background: none; color: var(--accent); padding: 6px 4px; }
+.btn-danger { color: var(--bad); }
+.btn-danger-solid { background: var(--bad); color: #fff; }
+.job-foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line, #e3e3e3); display: flex; justify-content: flex-end; }
 .btn-text:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
 .btn-lg { font-size: 16px; padding: 13px 22px; }
 .btn-block { width: 100%; }
@@ -280,7 +283,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.2";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -1523,13 +1526,29 @@ const invoiceOpts = (i) => ({ pay: i.pay || "deposit", received: i.received || "
 /* ---------- one job, one step at a time */
 const fact = (k, v, cls) => v ? '<div' + (cls ? ' class="' + cls + '"' : "") + '><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : "";
 const $amt = (v) => v ? (/\d/.test(v) ? "$" + v : v) : "";
+/* Delete a whole job: its folder, with every PDF, the photo and the earlier versions. */
+async function deleteJob(job) {
+  const v = await ask({ title: "Delete " + job.name + "?", text: "This deletes the job and all its files: the estimate, sales contract, final invoice, the photo and any earlier versions. It can't be undone here.",
+    buttons: [{ label: "Keep it", value: false }, { label: "Delete the job", value: true, kind: "btn-danger-solid" }] });
+  if (!v) return;
+  try {
+    const [y, m, c] = job.folder;
+    const yd = await Store.root.getDirectoryHandle(y), md = await yd.getDirectoryHandle(m);
+    await md.removeEntry(c, { recursive: true });
+    if (!(await listNames(md)).length) await yd.removeEntry(m).catch(() => {});
+    if (!(await listNames(yd)).length) await Store.root.removeEntry(y).catch(() => {});
+  } catch (e) { return showError(new Error("The job couldn't be deleted (" + ((e && e.message) || "error") + ").")); }
+  await loadJobs(); go("home");
+}
 async function viewJob() {
   const job = JOBS.find(j => j.id === current.id); if (!job) return go("home");
   const tab = current.tab || nextStep(job);
   view.innerHTML = backBtn("All jobs") +
     '<div class="job-title"><h2>' + esc(job.name) + '</h2><p class="muted">' + esc([job.address, job.city, job.phone].filter(Boolean).join(" · ")) + '</p></div>' +
-    stepsBar(job, tab) + '<div class="work" id="work"></div>';
+    stepsBar(job, tab) + '<div class="work" id="work"></div>' +
+    '<div class="job-foot"><button class="btn btn-text btn-danger" type="button" id="del-job">Delete this job</button></div>';
   $("#back").addEventListener("click", () => go("home"));
+  $("#del-job").addEventListener("click", () => deleteJob(job));
   wireSteps(job);
   const work = $("#work");
   const d = job[tab];
