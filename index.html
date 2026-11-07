@@ -228,23 +228,6 @@ details.more > div { display: grid; gap: 16px; margin-top: 14px; }
 .save-bar { position: sticky; bottom: 0; z-index: 2; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--line); margin: 0 -24px -24px; padding: 14px 24px calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 0 0 var(--r) var(--r); }
 
 
-/* talk-to-type */
-.dictate { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--accent-soft); display: grid; gap: 10px; }
-.dictate-idle { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
-.dictate-idle .hint { flex: 1 1 240px; }
-.dictate.on { position: sticky; top: 8px; z-index: 3; background: var(--surface); border-color: var(--accent); box-shadow: var(--shadow-lg); }
-.dictate-live { display: grid; gap: 10px; }
-.btn-mic { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
-.btn-mic:hover { background: var(--accent-hover); }
-.dict-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.dict-now { margin-left: auto; font-weight: 600; color: var(--accent); }
-.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: #d93025; box-shadow: 0 0 0 0 rgba(217, 48, 37, .5); animation: rec 1.4s ease-out infinite; }
-@keyframes rec { 0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, .45); } 100% { box-shadow: 0 0 0 10px rgba(217, 48, 37, 0); } }
-@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
-.dict-hear { font-size: 15px; color: var(--muted); min-height: 1.5em; overflow-wrap: anywhere; }
-.dict-target { border-color: #d93025 !important; box-shadow: 0 0 0 3px rgba(217, 48, 37, .18) !important; }
-.cmds { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
-
 /* new job */
 .starts { display: grid; gap: 12px; }
 .start-main { appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer; background: var(--surface); border: 1.5px solid var(--accent); border-radius: var(--r); padding: 22px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; box-shadow: var(--shadow); }
@@ -288,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.3";
+const APP_VERSION = "1.0.4";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -831,8 +814,7 @@ function setFoot() {
     ? "Saved in your " + (Store.root ? Store.root.name : ROOT_NAME) + " folder · Nothing is uploaded · Version " + APP_VERSION
     : Store.mode === "browser" ? "Preview · Files are kept in this browser only · Version " + APP_VERSION : "Version " + APP_VERSION;
 }
-let activeDict = null;
-function go(name, opts) { if (activeDict && activeDict.stop) activeDict.stop(); activeDict = null; current = Object.assign({ name }, opts || {}); render(); window.scrollTo(0, 0); }
+function go(name, opts) { current = Object.assign({ name }, opts || {}); render(); window.scrollTo(0, 0); }
 function render() {
   $("#go-settings").hidden = !Store.root || ["setup", "permission", "forms"].includes(current.name);
   setFoot();
@@ -1005,223 +987,6 @@ function stepsBar(job, active) {
 }
 function wireSteps(job) { $$("[data-step]").forEach(b => b.addEventListener("click", () => go("job", { id: job.id, tab: b.dataset.step }))); }
 
-/* ================================================================ dictation (talk instead of type) */
-/* Uses the browser's own speech recognition (Chrome / Edge). The estimate is read aloud one box at a
-   time: say the words, then "next". Spoken text is cleaned up for Masterpiece's wording. */
-const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-const canDictate = !!SpeechRec && window.top === window;
-const NUMWORDS = { zero: 0, oh: 0, none: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
-const STATES = { alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY" };
-const STREETS = { drive: "Dr.", street: "St.", avenue: "Ave.", road: "Rd.", lane: "Ln.", court: "Ct.", boulevard: "Blvd.", place: "Pl.", circle: "Cir.", parkway: "Pkwy.", terrace: "Ter.", highway: "Hwy." };
-/* Masterpiece's own words that speech recognition tends to get wrong. Add to this list as new ones turn up. */
-const VOCAB = [
-  [/\bply\s?(gem|jem|jim|gym|gen)\b/gi, "Plygem"],
-  [/\bjams\b/gi, "jambs"], [/\bjam\b/gi, "jamb"],
-  [/\b(triple|double|single|dual)\s+(pain|pan|paine)s?\b/gi, (m, a) => a.toLowerCase() + " pane"],
-  [/\b(therma|thermo|thurma)\s?(tru|true|through)\b/gi, "ThermaTru"],
-  [/\bpro\s?via\b/gi, "ProVia"],
-  [/\bpro\s?(200|two hundred)\b/gi, "Pro 200"],
-  [/\bre-?seal\b/gi, "reseal"], [/\bre-?trim\b/gi, "retrim"],
-  [/\btrim\s?work\b/gi, "trim work"],
-  [/\bsimington\b/gi, "Simonton"], [/\bmarvan\b/gi, "Marvin"],
-  [/\bvinal\b/gi, "vinyl"], [/\bsliders\b/gi, "sliders"],
-];
-const DICT_PREFS_KEY = "mpc-dictation";
-const dictPrefs = (() => { try { return Object.assign({ amp: true }, JSON.parse(lsGet(DICT_PREFS_KEY) || "{}")); } catch (_) { return { amp: true }; } })();
-
-function wordsToNumber(t) {
-  const s = String(t).trim().toLowerCase();
-  if (/^\d+$/.test(s)) return s;
-  return s in NUMWORDS ? (NUMWORDS[s] ? String(NUMWORDS[s]) : "") : null;
-}
-function spokenPunct(t) {
-  return t
-    .replace(/^\s*(asterisk|star)\b\s*/i, "*")
-    .replace(/\s*\basterisk\b\s*/gi, " *")
-    .replace(/\s*\b(period|full stop)\b/gi, ".")
-    .replace(/\s*\bcomma\b/gi, ",")
-    .replace(/\s*\bcolon\b/gi, ":")
-    .replace(/\b(open|left)\s+(paren|parenthesis|bracket)\s*/gi, "(")
-    .replace(/\s*\b(close|right)\s+(paren|parenthesis|bracket)\b/gi, ")")
-    .replace(/\bnumber sign\b/gi, "#");
-}
-function sentenceCase(t) {
-  t = t.replace(/^(\*?\s*)([a-z])/, (m, a, b) => a + b.toUpperCase());
-  return t.replace(/([.!?]\s+)([a-z])/g, (m, a, b) => a + b.toUpperCase());
-}
-function cleanDescription(raw, isStart) {
-  let t = spokenPunct(" " + raw + " ");
-  for (const [re, rep] of VOCAB) t = t.replace(re, rep);
-  if (dictPrefs.amp) t = t.replace(/\band\b/gi, "&");
-  t = t.replace(/\s+([.,:)])/g, "$1").replace(/\(\s+/g, "(").replace(/\s{2,}/g, " ").trim();
-  return isStart ? sentenceCase(t) : t;
-}
-function cleanPhone(raw) {
-  const d = raw.replace(/\b(oh|zero)\b/gi, "0").split(/\s+/).map(w => wordsToNumber(w) ?? w).join("").replace(/\D/g, "");
-  if (d.length === 10) return d.slice(0, 3) + "-" + d.slice(3, 6) + "-" + d.slice(6);
-  if (d.length === 11 && d[0] === "1") return d.slice(1, 4) + "-" + d.slice(4, 7) + "-" + d.slice(7);
-  if (d.length === 7) return d.slice(0, 3) + "-" + d.slice(3);
-  return raw.trim();
-}
-function cleanAddress(raw) {
-  let t = spokenPunct(raw).replace(/,/g, "").replace(/\s{2,}/g, " ").trim();
-  t = t.replace(/\b([A-Za-z]+)\b(?=\s*$)/, (w) => STREETS[w.toLowerCase()] || w);
-  return t.replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
-}
-function cleanCity(raw) {
-  let t = " " + raw.replace(/,/g, " ").replace(/\./g, "") + " ";
-  for (const [name, ab] of Object.entries(STATES).sort((a, b) => b[0].length - a[0].length)) t = t.replace(new RegExp("\\s" + name + "\\s", "i"), " " + ab + " ");
-  t = t.replace(/(\d)\s+(?=\d)/g, "$1");             // "8 3 6 4 2" -> "83642"
-  t = t.replace(/\s{2,}/g, " ").trim();
-  return t.replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
-}
-function cleanCount(raw) { const w = raw.trim().split(/\s+/).pop(); const n = wordsToNumber(w); return n !== null ? n : raw.trim(); }
-function cleanMoney(raw) {
-  let s = String(raw).toLowerCase().replace(/[$,]/g, "").replace(/\s+/g, " ").trim();
-  let m = s.match(/(\d+)(?:\.(\d{1,2}))?\s*dollars?(?:\s*(?:and)?\s*(\d{1,2})\s*cents?)?/);
-  if (m) return money(+m[1] * 100 + (m[3] ? +m[3] : m[2] ? +m[2].padEnd(2, "0") : 0));
-  m = s.match(/^(\d+)(?:\.(\d{1,2}))?$/);
-  if (m) return money(+m[1] * 100 + (m[2] ? +m[2].padEnd(2, "0") : 0));
-  m = s.match(/^(\d+)\s+(?:point\s+|and\s+)?(\d{2})(?:\s*cents?)?$/);
-  if (m) return money(+m[1] * 100 + +m[2]);
-  return raw.trim();
-}
-const COMMAND_RE = /(?:^|\s)(next item|new item|another item|next|skip|go back|back up|scratch that|delete that|clear that|no price|i'?m done|done|finished|stop listening)\.?\s*$/i;
-
-function setupDictation(form, onRerender) {
-  const wrap = document.createElement("div");
-  wrap.className = "dictate";
-  wrap.innerHTML = canDictate
-    ? '<div class="dictate-idle"><button type="button" class="btn btn-mic" id="dict-start">' + MIC + ' Read it aloud</button>' +
-      '<p class="hint">Faster than typing. Press the button and read the estimate out loud. Say <b>"next"</b> after each box.</p></div>' +
-      '<div class="dictate-live" hidden><div class="dict-top"><span class="rec-dot" aria-hidden="true"></span><b>Listening</b><span class="dict-now" id="dict-now"></span></div>' +
-      '<p class="dict-hear" id="dict-hear" aria-live="polite"></p>' +
-      '<div class="row"><button type="button" class="btn btn-primary" id="dict-next">Next box ' + ARROW + '</button><button type="button" class="btn btn-secondary" id="dict-stop">Stop</button></div>' +
-      '<details class="more"><summary>What can I say?</summary><div class="small"><ul class="cmds">' +
-      '<li><b>"next"</b> moves to the next box</li><li><b>"skip"</b> leaves a box empty</li><li><b>"go back"</b> returns to the last box</li>' +
-      '<li><b>"new item"</b> starts the next item</li><li><b>"no price"</b> for a note without a price</li><li><b>"scratch that"</b> clears the box</li>' +
-      '<li><b>"period"</b>, <b>"comma"</b>, <b>"open paren"</b>, <b>"close paren"</b>, <b>"star"</b> for punctuation</li><li><b>"done"</b> stops listening</li></ul>' +
-      '<label class="check"><input type="checkbox" id="dict-amp"' + (dictPrefs.amp ? " checked" : "") + '><span>Write "and" as "&"</span></label>' +
-      '<p class="hint">Speech is turned into text by your browser\'s speech service (Google in Chrome, Microsoft in Edge), so it needs internet. You can also click any box to talk into it.</p></div></details></div>'
-    : '<div class="dictate-idle"><button type="button" class="btn btn-mic" disabled>' + MIC + ' Read it aloud</button>' +
-      '<p class="hint">' + (window.top !== window
-        ? "Talk-to-type is turned off in this preview because the microphone is blocked here. It works in the installed program in Chrome or Edge."
-        : "Talk-to-type needs Chrome or Edge on a computer.") + '</p></div>';
-  if (!canDictate) return wrap;
-  let rec = null, active = false, curId = null, restartTimer = null;
-  const live = $(".dictate-live", wrap), idle = $(".dictate-idle", wrap);
-  const LABELS = { "d-name": "Name", "d-phone": "Phone", "d-address": "Address", "d-city_state_zip": "City / State / Zip", "d-windows": "Windows", "d-doors": "Doors", "d-patio_doors": "Patio doors", "d-other": "Other" };
-  const targets = () => {
-    const out = Object.keys(LABELS).map(id => form.querySelector("#" + id)).filter(Boolean);
-    $$("#items .item", form).forEach((row, i) => { const t = $("textarea", row), p = $(".price input", row); if (t) out.push(t); if (p) out.push(p); });
-    return out;
-  };
-  const labelOf = (el) => {
-    if (!el) return "";
-    if (LABELS[el.id]) return LABELS[el.id];
-    const m = el.id.match(/^it-([tp])-(\d+)$/);
-    return m ? "Item " + (+m[2] + 1) + (m[1] === "t" ? " description" : " price") : "";
-  };
-  const current = () => curId && form.querySelector("#" + curId);
-  function setTarget(el) {
-    $$(".dict-target", form).forEach(x => x.classList.remove("dict-target"));
-    curId = el ? el.id : null;
-    if (!el) return;
-    el.classList.add("dict-target");
-    el.focus({ preventScroll: true });
-    el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-    $("#dict-now").textContent = "Now: " + labelOf(el);
-    $("#dict-hear").textContent = el.id.startsWith("it-p") ? 'Say the price, or "no price".' : el.id.startsWith("it-t") ? 'Read the item. Say "next" for its price.' : 'Say the ' + labelOf(el).toLowerCase() + ', then "next".';
-  }
-  function newItem() { $("#add-item", form).click(); const ts = $$("#items textarea", form); setTarget(ts[ts.length - 1]); }
-  function move(step) {
-    const list = targets(); const i = list.findIndex(e => e.id === curId);
-    const nx = list[i + step];
-    if (nx) return setTarget(nx);
-    if (step > 0) newItem();
-  }
-  function put(el, text) {
-    if (!text) return;
-    const id = el.id;
-    let v;
-    if (id === "d-phone") v = cleanPhone(text);
-    else if (id === "d-city_state_zip") v = cleanCity(text);
-    else if (id === "d-address") v = cleanAddress(((el.value || "") + " " + text).trim());
-    else if (["d-windows", "d-doors", "d-patio_doors"].includes(id)) v = cleanCount(text);
-    else if (id.startsWith("it-p")) v = cleanMoney(text);
-    else if (id.startsWith("it-t")) { const prev = el.value.trim(); v = sentenceCase((prev ? prev + " " : "") + cleanDescription(text, !prev || /[.!?]$/.test(prev))); }
-    else if (id === "d-name") v = ((el.value || "") + " " + text).trim().replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
-    else v = ((el.value || "") + " " + spokenPunct(text)).trim().replace(/^[a-z]/, (c) => c.toUpperCase());
-    el.value = v;
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    if (id.startsWith("it-p")) el.dispatchEvent(new Event("blur"));
-  }
-  function handleFinal(text) {
-    let t = text.trim(); if (!t) return;
-    const el = current(); if (!el) return;
-    const m = t.match(COMMAND_RE);
-    let cmd = null;
-    if (m) { cmd = m[1].toLowerCase().replace(/[’']/g, "'"); t = t.slice(0, m.index).trim(); }
-    if (t) put(el, t);
-    if (!cmd) { $("#dict-hear").textContent = "Heard: " + text.trim(); return; }
-    if (cmd === "next") { if (el.id.startsWith("it-p")) return newItem(); return move(1); }
-    if (cmd === "skip" || cmd === "no price") return move(1);
-    if (cmd === "next item" || cmd === "new item" || cmd === "another item") return newItem();
-    if (cmd === "go back" || cmd === "back up") return move(-1);
-    if (/scratch|delete|clear/.test(cmd)) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); $("#dict-hear").textContent = "Cleared. Say it again."; return; }
-    return stop();
-  }
-  function startRec() {
-    rec = new SpeechRec();
-    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    rec.onresult = (e) => {
-      let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) handleFinal(r[0].transcript); else interim += r[0].transcript;
-      }
-      if (interim) $("#dict-hear").textContent = "Hearing: " + interim.trim() + "…";
-    };
-    rec.onerror = (e) => {
-      if (e.error === "no-speech" || e.error === "aborted") return;
-      const msg = e.error === "not-allowed" || e.error === "service-not-allowed" ? "The microphone is blocked. Click the lock icon in the address bar, allow the microphone, and try again."
-        : e.error === "network" ? "Talk-to-type needs an internet connection." : e.error === "audio-capture" ? "No microphone was found." : "Talk-to-type stopped (" + e.error + ").";
-      stop(); showError(new Error(msg), "Talk-to-type");
-    };
-    rec.onend = () => { if (active) { clearTimeout(restartTimer); restartTimer = setTimeout(() => { if (active) try { rec.start(); } catch (_) {} }, 150); } };
-    try { rec.start(); } catch (_) {}
-  }
-  function start() {
-    active = true; idle.hidden = true; live.hidden = false; wrap.classList.add("on");
-    const list = targets();
-    const firstEmpty = list.find(e => !e.value.trim() && !e.id.startsWith("it-p"));
-    const last = list[list.length - 1];
-    if (firstEmpty) setTarget(firstEmpty);
-    else if (last && last.id.startsWith("it-p") && last.value.trim()) newItem();
-    else setTarget(last);
-    startRec();
-  }
-  function stop() {
-    active = false; clearTimeout(restartTimer);
-    try { rec && rec.stop(); } catch (_) {}
-    live.hidden = true; idle.hidden = false; wrap.classList.remove("on");
-    $$(".dict-target", form).forEach(x => x.classList.remove("dict-target"));
-    // drop an empty item left at the end by "next"
-    const items = $$("#items .item", form);
-    if (items.length > 1) { const lastRow = items[items.length - 1]; if (!$("textarea", lastRow).value.trim() && !$(".price input", lastRow).value.trim()) $("[data-del]", lastRow).click(); }
-    curId = null;
-  }
-  $("#dict-start", wrap).addEventListener("click", start);
-  $("#dict-stop", wrap).addEventListener("click", stop);
-  $("#dict-next", wrap).addEventListener("click", () => { const el = current(); if (el && el.id.startsWith("it-p")) newItem(); else move(1); });
-  $("#dict-amp", wrap).addEventListener("change", (e) => { dictPrefs.amp = e.target.checked; lsSet(DICT_PREFS_KEY, JSON.stringify(dictPrefs)); });
-  form.addEventListener("focusin", (e) => { if (active && e.target.matches("input[type=text], textarea") && e.target.id !== curId && targets().includes(e.target)) setTarget(e.target); });
-  wrap.stop = stop;
-  return wrap;
-}
-const MIC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
-
-
 /* ================================================================ handwriting reader (Claude reads the photo) */
 /* In the installed program: Claude through the office's own Anthropic API key, kept only on this
    computer. In the Claude preview: Claude through the viewer's own Claude account. */
@@ -1376,11 +1141,8 @@ async function viewEditor() {
     $("#why").textContent = w; $("#save").dataset.blocked = w ? "1" : "0"; refreshReadyBits();
   };
   const drawDetails = () => {
-    if (activeDict && activeDict.stop) activeDict.stop();
     $("#det").innerHTML = "";
     detailsForm($("#det"), det, () => { if (mode === "new") lsSet("mpc-new-draft", JSON.stringify(det)); why(); });
-    activeDict = setupDictation($("#det"));
-    $("#det").prepend(activeDict);
   };
   drawDetails();
   if (mode === "contract") {
@@ -1444,7 +1206,7 @@ async function viewEditor() {
     const v = await ask({ title: "Start over?", text: "This clears everything typed so far.", buttons: [{ label: "Keep typing", value: false }, { label: "Clear it", value: true, kind: "btn-primary" }] });
     if (v) { lsSet("mpc-new-draft", null); go("editor", { mode: "new" }); }
   });
-  $("#save").addEventListener("click", () => { if (activeDict && activeDict.stop) activeDict.stop(); saveEditor(mode, job, det, photo); });
+  $("#save").addEventListener("click", () => saveEditor(mode, job, det, photo));
   why();
   if (mode === "new" && !det.name) { const n = $("#d-name"); if (n) n.focus(); }
 }
