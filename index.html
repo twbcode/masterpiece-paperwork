@@ -1,0 +1,1706 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Masterpiece Paperwork</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#ffffff">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<style>
+/* Layout: a light business app. White top bar; one centered column per screen; on a job, a 3-step
+   progress bar (Estimate -> Sales Contract -> Final Invoice) with one action panel beside the document. */
+:root {
+  color-scheme: light;
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --subtle: #f0f3f2;
+  --ink: #15201c;
+  --muted: #5d6965;
+  --faint: #8a9591;
+  --line: #e1e6e4;
+  --line-strong: #cdd5d2;
+  --accent: #23604f;          /* Masterpiece green */
+  --accent-hover: #1a4c3e;
+  --accent-soft: #e7f1ed;
+  --accent-ink: #ffffff;
+  --warn: #8a4b00; --warn-bg: #fff4e2;
+  --bad: #a3231b; --bad-bg: #fdecea;
+  --good: #1f7a46; --good-bg: #e6f4ec;
+  --shadow: 0 1px 2px rgba(16, 32, 26, .05), 0 1px 3px rgba(16, 32, 26, .06);
+  --shadow-lg: 0 2px 4px rgba(16, 32, 26, .04), 0 12px 32px rgba(16, 32, 26, .10);
+  --font: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r: 12px;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 26px; line-height: 1.2; }
+h3 { font-size: 18px; line-height: 1.3; font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.hint { font-size: 13.5px; color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+
+/* top bar */
+.bar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar-in, .main {
+  max-width: 1160px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.bar-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+.logo { height: 48px; width: auto; display: block; }
+.brand-div { width: 1px; height: 28px; background: var(--line-strong); }
+.mark { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+.brand-name { font-weight: 700; font-size: 18px; color: var(--accent); letter-spacing: -0.01em; }
+.bar-right { display: flex; align-items: center; gap: 8px; }
+.engine { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.engine[hidden] { display: none; }
+@media (max-width: 560px) { #engine-text { display: none; } .brand-name { font-size: 16px; } .logo { height: 34px; } }
+.engine .spin { width: 14px; height: 14px; border-width: 2px; }
+.icon-btn { appearance: none; background: none; border: 1px solid transparent; border-radius: 8px; padding: 7px 10px; cursor: pointer; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.icon-btn:hover { background: var(--subtle); color: var(--ink); }
+.main { padding-block: 28px 56px; display: grid; gap: 24px; }
+#view { display: grid; gap: 20px; min-width: 0; }
+
+/* buttons */
+.btn { appearance: none; font: inherit; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; padding: 10px 16px; border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 8px; line-height: 1.2; text-decoration: none; transition: background .15s, border-color .15s; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-text { background: none; color: var(--accent); padding: 6px 4px; }
+.btn-text:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.btn-lg { font-size: 16px; padding: 13px 22px; }
+.btn-block { width: 100%; }
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.why { font-size: 13.5px; color: var(--muted); }
+.why:empty { display: none; }
+
+/* cards + fields */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 24px; display: grid; gap: 18px; min-width: 0; align-content: start; }
+.card-head { display: grid; gap: 4px; }
+.section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field label { font-weight: 600; font-size: 14px; }
+input[type="text"], input[type="search"], textarea {
+  font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; transition: border-color .15s, box-shadow .15s;
+}
+textarea { resize: vertical; min-height: 84px; line-height: 1.45; }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.money-in { position: relative; }
+.money-in::before { content: "$"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; }
+.money-in input { padding-left: 26px; }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); flex: none; }
+.check b { display: block; font-weight: 600; }
+details.more > summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: 15px; list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "+"; font-weight: 700; width: 14px; }
+details.more[open] > summary::before { content: "–"; }
+details.more > div { display: grid; gap: 16px; margin-top: 14px; }
+.opt { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+.sep { height: 1px; background: var(--line); }
+
+.note { border-radius: 10px; padding: 11px 14px; font-size: 14.5px; display: grid; gap: 2px; }
+.note.warn { background: var(--warn-bg); color: var(--warn); }
+.note.bad { background: var(--bad-bg); color: var(--bad); }
+.note.ok { background: var(--good-bg); color: var(--good); }
+.note pre { white-space: pre-wrap; font-size: 12px; margin: 6px 0 0; max-height: 200px; overflow: auto; color: var(--ink); }
+.spin { width: 18px; height: 18px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.busy { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+
+/* setup */
+.narrow { max-width: 560px; margin: 6vh auto 0; width: 100%; }
+.narrow .card { padding: 32px; gap: 20px; }
+
+/* home */
+.page-head { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+.page-head .row { flex: 1 1 320px; justify-content: flex-end; }
+.search { position: relative; flex: 1 1 220px; max-width: 320px; }
+.search input { padding-left: 38px; }
+.search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--faint); }
+@media (max-width: 560px) { .search { max-width: none; } .page-head .row .btn { flex: 1 1 auto; } }
+.month { font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 4px 2px 8px; }
+.jobs { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.jobs li + li { border-top: 1px solid var(--line); }
+.job-row { appearance: none; width: 100%; background: none; border: none; font: inherit; color: inherit; cursor: pointer; text-align: left; display: grid; grid-template-columns: minmax(0, 1fr) auto 16px; gap: 6px 18px; padding: 16px 18px; align-items: center; }
+.job-row:hover { background: var(--subtle); }
+.job-name { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.job-sub { font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+.chev { color: var(--faint); }
+.status { font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.status.s0 { background: var(--subtle); color: var(--muted); }
+.status.s1, .status.s2 { background: var(--warn-bg); color: var(--warn); }
+.status.s3 { background: var(--good-bg); color: var(--good); }
+@media (max-width: 560px) { .job-row { grid-template-columns: minmax(0, 1fr) 16px; } .job-row .status { grid-column: 1; justify-self: start; } .job-row .chev { grid-row: 1 / span 2; grid-column: 2; } }
+.group { display: grid; gap: 0; }
+.empty { border: 1px dashed var(--line-strong); border-radius: var(--r); padding: 40px 24px; text-align: center; display: grid; gap: 10px; justify-items: center; background: var(--surface); }
+
+/* job: steps */
+.back { justify-self: start; }
+.job-title { display: grid; gap: 2px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+.step { appearance: none; width: 100%; height: 100%; background: none; border: none; font: inherit; color: var(--muted); text-align: left; cursor: pointer; padding: 14px 18px; display: flex; gap: 12px; align-items: center; position: relative; }
+.steps li + li .step { border-left: 1px solid var(--line); }
+.step:disabled { cursor: default; }
+.step .n { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; font-size: 14px; border: 2px solid var(--line-strong); flex: none; background: var(--surface); }
+.step .t { display: grid; line-height: 1.25; min-width: 0; }
+.step .t b { font-weight: 600; color: var(--ink); }
+.step .t span { font-size: 13px; }
+.step.done .n { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.current { background: var(--accent-soft); }
+.step.current::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--accent); }
+.step.current .n { border-color: var(--accent); color: var(--accent); }
+.step.done.current .n { color: #fff; }
+.step:not(:disabled):hover { background: var(--subtle); }
+.step.current:hover { background: var(--accent-soft); }
+@media (max-width: 640px) { .step { flex-direction: column; text-align: center; padding: 12px 6px; gap: 6px; } .step .t span { display: none; } .step .t b { font-size: 14px; } }
+
+.work { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (max-width: 920px) { .work { grid-template-columns: minmax(0, 1fr); } }
+.panel { position: sticky; top: 16px; }
+@media (max-width: 920px) { .panel { position: static; } }
+.done-badge { display: inline-flex; align-items: center; gap: 6px; color: var(--good); font-weight: 600; font-size: 14px; }
+.facts { display: grid; gap: 0; margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.facts div { display: flex; justify-content: space-between; gap: 12px; padding: 10px 14px; }
+.facts div + div { border-top: 1px solid var(--line); }
+.facts dt { color: var(--muted); font-size: 14px; }
+.facts dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.facts div.total dd { color: var(--accent); }
+.paper { background: #fff; border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow-lg); overflow: hidden; line-height: 0; max-width: 100%; }
+.paper canvas { width: 100%; height: auto; display: block; }
+.paper .ph { line-height: 1.5; padding: 20px; color: var(--muted); font-size: 14px; }
+.placeholder { border: 1px dashed var(--line-strong); border-radius: 6px; aspect-ratio: 8.5 / 11; display: grid; place-items: center; text-align: center; color: var(--faint); padding: 24px; background: var(--surface); width: 100%; }
+.older > summary { cursor: pointer; color: var(--muted); font-size: 14px; font-weight: 600; }
+.older ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.older li { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; align-items: center; }
+.older li span { overflow-wrap: anywhere; min-width: 0; color: var(--muted); }
+
+/* estimate form */
+.form-layout { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.form-layout.solo { grid-template-columns: minmax(0, 860px); justify-content: center; }
+@media (max-width: 960px) { .form-layout { grid-template-columns: minmax(0, 1fr); } }
+.photo-col { position: sticky; top: 16px; display: grid; gap: 12px; }
+@media (max-width: 960px) { .photo-col { position: static; } }
+.photo { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); line-height: 0; }
+.photo img, .photo canvas { width: 100%; height: auto; display: block; }
+.reader { display: grid; gap: 8px; }
+.reader .btn { justify-self: stretch; }
+.reader #read-msg { display: grid; gap: 8px; }
+.key-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.key-row input { flex: 1 1 280px; }
+.drop { position: relative; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: var(--surface); padding: 22px 16px; display: grid; gap: 4px; justify-items: center; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+.drop:hover { border-color: var(--accent); background: var(--accent-soft); }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.drop:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.drop b { font-weight: 600; }
+.items { display: grid; gap: 12px; }
+.item { display: grid; grid-template-columns: 28px minmax(0, 1fr) 170px 32px; gap: 10px 12px; align-items: start; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+.item .num { width: 28px; height: 28px; border-radius: 50%; background: var(--surface); border: 1px solid var(--line-strong); display: grid; place-items: center; font-size: 13px; font-weight: 700; color: var(--muted); margin-top: 6px; }
+.item textarea { min-height: 72px; overflow: hidden; resize: none; }
+@media (max-width: 640px) { .item { grid-template-columns: minmax(0, 1fr) 32px; } .item .num { display: none; } .item .price { grid-column: 1; } .item .x { grid-column: 2; grid-row: 1; } }
+.x { appearance: none; border: none; background: none; color: var(--faint); font-size: 22px; line-height: 1; cursor: pointer; padding: 6px; border-radius: 8px; margin-top: 4px; }
+.x:hover { color: var(--bad); background: var(--bad-bg); }
+.totals { display: grid; grid-template-columns: minmax(0, 1fr) 220px; gap: 12px; align-items: center; }
+@media (max-width: 640px) { .totals { grid-template-columns: 1fr; } }
+.save-bar { position: sticky; bottom: 0; z-index: 2; background: color-mix(in srgb, var(--surface) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--line); margin: 0 -24px -24px; padding: 14px 24px calc(14px + env(safe-area-inset-bottom, 0px)); border-radius: 0 0 var(--r) var(--r); }
+
+
+/* talk-to-type */
+.dictate { border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; background: var(--accent-soft); display: grid; gap: 10px; }
+.dictate-idle { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; }
+.dictate-idle .hint { flex: 1 1 240px; }
+.dictate.on { position: sticky; top: 8px; z-index: 3; background: var(--surface); border-color: var(--accent); box-shadow: var(--shadow-lg); }
+.dictate-live { display: grid; gap: 10px; }
+.btn-mic { background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+.btn-mic:hover { background: var(--accent-hover); }
+.dict-top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dict-now { margin-left: auto; font-weight: 600; color: var(--accent); }
+.rec-dot { width: 12px; height: 12px; border-radius: 50%; background: #d93025; box-shadow: 0 0 0 0 rgba(217, 48, 37, .5); animation: rec 1.4s ease-out infinite; }
+@keyframes rec { 0% { box-shadow: 0 0 0 0 rgba(217, 48, 37, .45); } 100% { box-shadow: 0 0 0 10px rgba(217, 48, 37, 0); } }
+@media (prefers-reduced-motion: reduce) { .rec-dot { animation: none; } }
+.dict-hear { font-size: 15px; color: var(--muted); min-height: 1.5em; overflow-wrap: anywhere; }
+.dict-target { border-color: #d93025 !important; box-shadow: 0 0 0 3px rgba(217, 48, 37, .18) !important; }
+.cmds { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* new job */
+.starts { display: grid; gap: 12px; }
+.start-main { appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer; background: var(--surface); border: 1.5px solid var(--accent); border-radius: var(--r); padding: 22px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; box-shadow: var(--shadow); }
+.start-main:hover { background: var(--accent-soft); }
+.start-ico { width: 44px; height: 44px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; }
+.start-alt { appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; display: grid; gap: 2px; }
+.start-alt:hover { border-color: var(--accent); }
+
+/* dialog */
+dialog { border: none; border-radius: 16px; background: var(--surface); color: var(--ink); padding: 26px; max-width: min(480px, calc(100vw - 32px)); box-shadow: 0 24px 64px rgba(16, 32, 26, .25); }
+dialog::backdrop { background: rgba(16, 28, 24, .35); }
+dialog .dlg { display: grid; gap: 14px; }
+dialog .row { justify-content: flex-end; margin-top: 6px; }
+.settings-list { display: grid; gap: 10px; }
+.form-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.form-row > div:first-child { min-width: 0; }
+.foot { font-size: 13px; color: var(--faint); text-align: center; }
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <button class="brand" type="button" id="go-home" aria-label="Masterpiece Paperwork, all jobs">
+      <img class="logo" src="brand/masterpiece-logo.svg" alt="Masterpiece Construction Experts" width="120" height="41"><span class="brand-div" aria-hidden="true"></span><span class="brand-name">Paperwork</span>
+    </button>
+    <div class="bar-right">
+      <span class="engine" id="engine" role="status" aria-live="polite"><span class="spin"></span><span id="engine-text">Getting ready…</span></span>
+      <button class="icon-btn" type="button" id="go-settings" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Settings
+      </button>
+    </div>
+  </div>
+</header>
+<main class="main">
+  <div id="view" aria-live="polite"></div>
+  <footer class="foot" id="foot"></footer>
+</main>
+<dialog id="dlg"><div class="dlg" id="dlg-body"></div></dialog>
+
+<script>
+(() => {
+"use strict";
+/* ================================================================ basics */
+const APP_VERSION = "1.0.0";
+const ROOT_NAME = "Masterpiece Paperwork";
+const JOB_FILE = "job details.json";
+const OLDER = "Older versions";
+const FORMS_DIR = "Blank forms";
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const utf8 = (s) => new TextEncoder().encode(s);
+const pad2 = (n) => String(n).padStart(2, "0");
+const nowIso = () => new Date().toISOString();
+const niceDate = (iso) => { try { return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }); } catch (_) { return ""; } };
+const niceDateTime = (iso) => { try { const d = new Date(iso); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }); } catch (_) { return ""; } };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : "j" + Date.now().toString(36) + Math.random().toString(36).slice(2));
+const clone = (o) => JSON.parse(JSON.stringify(o));
+const inArtifact = !!(window.claude && window.claude.use);
+const params = new URLSearchParams(location.search);
+class BuildError extends Error { constructor(msg, details) { super(msg); this.details = details; } }
+
+/* ================================================================ engine (the company's Python scripts, run in a worker) */
+const WHEELS = [
+  "charset_normalizer-3.5.2-py3-none-any.b64.txt", "fonttools-4.67.0-py3-none-any.b64.txt",
+  "pdfminer_six-20260107-py3-none-any.b64.txt", "pdfplumber-0.11.10-py3-none-any.b64.txt",
+  "pypdf-6.17.0-py3-none-any.b64.txt", "reportlab-5.0.1-py3-none-any.b64.txt",
+];
+const SCRIPTS = ["mpc_engine.py", "build_contract.py", "build_invoice.py", "build_estimate.py", "analyze_photo.py"];
+const WORKER_MAIN = `
+let py = null, eng = null;
+const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("Couldn't load " + u.split("/").pop() + " (" + r.status + ")"); return new Uint8Array(await r.arrayBuffer()); };
+const getB64 = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("Couldn't load " + u.split("/").pop() + " (" + r.status + ")"); const t = atob((await r.text()).trim()); const b = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) b[i] = t.charCodeAt(i); return b; };
+const say = (t) => self.postMessage({ type: "status", text: t });
+function freshJob(files) {
+  py.runPython("import shutil, os\\nfor d in ('/mpc/job', '/mpc/out'):\\n    shutil.rmtree(d, ignore_errors=True)\\n    os.makedirs(d)");
+  for (const [name, bytes] of Object.entries(files || {})) py.FS.writeFile("/mpc/job/" + name, bytes);
+}
+self.onmessage = async (e) => {
+  const m = e.data;
+  if (m.cmd === "init") {
+    try {
+      say("Starting the paperwork tools…");
+      const stdlib = await getB64(m.base + "engine/python_stdlib.b64.txt");
+      const realFetch = self.fetch.bind(self);
+      self.fetch = (u, o) => String(u).endsWith("python_stdlib.zip") ? Promise.resolve(new Response(stdlib, { headers: { "Content-Type": "application/zip" } })) : realFetch(u, o);
+      py = await loadPyodide({ indexURL: m.base + "engine/", stdout: () => {}, stderr: () => {} });
+      self.fetch = realFetch;
+      const sp = py.runPython("import site; site.getsitepackages()[0]");
+      say("Loading the PDF tools…");
+      const wheels = await Promise.all(m.wheels.map(w => getB64(m.base + "py/" + w)));
+      for (const w of wheels) py.unpackArchive(w, "zip", { extractDir: sp });
+      py.FS.mkdirTree("/usr/share/fonts/truetype/dejavu"); py.FS.mkdirTree("/usr/share/fonts/truetype/crosextra");
+      py.FS.writeFile("/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed.ttf", await get(m.base + "fonts/DejaVuSansCondensed.ttf"));
+      py.FS.writeFile("/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf", await get(m.base + "fonts/Carlito-Regular.ttf"));
+      py.FS.mkdirTree("/mpc/scripts"); py.FS.mkdirTree("/mpc/forms");
+      for (const s of m.scripts) py.FS.writeFile("/mpc/scripts/" + s, await get(m.base + "scripts/" + s + ".txt"));
+      for (const f of m.forms) py.FS.writeFile("/mpc/forms/" + f, await get(m.base + "templates/" + f));
+      py.runPython("import sys; sys.path.insert(0, '/mpc/scripts'); import mpc_engine; import pypdf, pdfplumber, fontTools");
+      eng = py.globals.get("mpc_engine");
+      self.postMessage({ type: "ready" });
+    } catch (err) {
+      self.postMessage({ type: "fatal", message: String((err && err.message) || err).slice(0, 2000) });
+    }
+    return;
+  }
+  try {
+    freshJob(m.files);
+    if (m.cmd === "run") {
+      const args = py.toPy(m.args);
+      const res = JSON.parse(eng.run(m.script, args));
+      args.destroy();
+      const outs = {};
+      for (const n of py.FS.readdir("/mpc/out")) if (n !== "." && n !== "..") outs[n] = py.FS.readFile("/mpc/out/" + n);
+      self.postMessage({ type: "result", id: m.id, res, outs });
+    } else if (m.cmd === "header") {
+      self.postMessage({ type: "result", id: m.id, header: JSON.parse(eng.read_header("/mpc/job/" + m.name)) });
+    }
+  } catch (err) {
+    self.postMessage({ type: "result", id: m.id, res: { code: 1, stdout: "", stderr: String((err && err.message) || err) }, outs: {}, header: { error: String((err && err.message) || err) } });
+  }
+};`;
+const engine = { ready: false, worker: null, pending: new Map(), seq: 0, failMessage: "" };
+let readyWaiters = [];
+function setEngine(state, text) { const e = $("#engine"); e.hidden = state === "ready"; e.style.color = state === "failed" ? "var(--bad)" : ""; const sp = $(".spin", e); if (sp) sp.hidden = state !== "loading"; $("#engine-text").textContent = text; }
+async function startEngine() {
+  try {
+    const base = new URL("./", location.href).href;
+    const fetchText = async (p) => { const r = await fetch(p); if (!r.ok) throw new Error("Couldn't load " + p); return r.text(); };
+    const [asm, loader] = await Promise.all([fetchText("engine/pyodide.asm.js"), fetchText("engine/pyodide.js")]);
+    const w = new Worker(URL.createObjectURL(new Blob([asm, "\n;\n", loader, "\n;\n", WORKER_MAIN], { type: "text/javascript" })));
+    engine.worker = w;
+    w.onerror = (ev) => { if (!engine.ready) failEngine(ev.message || "The tools stopped unexpectedly."); };
+    w.onmessage = (ev) => {
+      const m = ev.data;
+      if (m.type === "status") setEngine("loading", m.text);
+      else if (m.type === "ready") { engine.ready = true; setEngine("ready", "Ready"); readyWaiters.forEach(f => f()); readyWaiters = []; refreshReadyBits(); }
+      else if (m.type === "fatal") failEngine(m.message);
+      else if (m.type === "result") { const p = engine.pending.get(m.id); engine.pending.delete(m.id); if (p) p(m); }
+    };
+    w.postMessage({ cmd: "init", base, wheels: WHEELS, scripts: SCRIPTS, forms: [] });
+  } catch (err) { failEngine(String((err && err.message) || err)); }
+}
+function failEngine(msg) {
+  engine.ready = false; engine.failMessage = msg || "unknown";
+  setEngine("failed", "The paperwork tools couldn't start. Reload to try again.");
+  console.error("Engine failed:", msg);
+  readyWaiters = [];
+  refreshReadyBits();
+}
+function whenReady() {
+  if (engine.ready) return Promise.resolve();
+  if (engine.failMessage) return Promise.reject(new BuildError("The paperwork tools couldn't start. Close the program and open it again."));
+  return new Promise(res => readyWaiters.push(res));
+}
+function post(msg, files) {
+  return new Promise((resolve) => {
+    const id = ++engine.seq; engine.pending.set(id, resolve);
+    const copy = {}; const transfer = [];
+    for (const [k, v] of Object.entries(files || {})) { const c = v.slice(); copy[k] = c; transfer.push(c.buffer); }
+    engine.worker.postMessage(Object.assign({ id, files: copy }, msg), transfer);
+  });
+}
+async function runScript(script, args, files) { await whenReady(); return post({ cmd: "run", script, args }, files); }
+async function readHeader(bytes) { await whenReady(); const r = await post({ cmd: "header", name: "in.pdf" }, { "in.pdf": bytes }); return r.header || {}; }
+function parseReport(res) { const s = res.stdout || ""; const i = s.indexOf("{"); if (i >= 0) { try { return JSON.parse(s.slice(i)); } catch (_) {} } return null; }
+function finish(r) {
+  const rep = parseReport(r.res); const names = Object.keys(r.outs || {});
+  if (r.res.code !== 0 || !rep || rep.error || !names.length) {
+    const tail = (r.res.stderr || "").trim().split("\n").pop() || "";
+    throw new BuildError((rep && rep.error) || (tail ? "The script stopped: " + tail : "The script stopped without saying why."), r.res.stderr);
+  }
+  return { name: names[0], bytes: r.outs[names[0]], rep };
+}
+
+/* ================================================================ small browser storage (remembers the folder) */
+function idb() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open("mpc-paperwork", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("kv");
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv").objectStore("kv").get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); }); }
+async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv", "readwrite").objectStore("kv").put(v, k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); }); }
+const lsGet = (k) => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+const lsSet = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (_) {} };
+
+/* ================================================================ the paperwork folder */
+const Store = { root: null, mode: null, pending: null, canFolder: false };
+async function perm(h, ask) {
+  if (!h.queryPermission) return "granted";
+  const o = { mode: "readwrite" };
+  let p = await h.queryPermission(o);
+  if (p !== "granted" && ask) p = await h.requestPermission(o);
+  return p;
+}
+async function initStore() {
+  Store.canFolder = typeof window.showDirectoryPicker === "function" && window.top === window && params.get("storage") !== "browser";
+  let saved = null;
+  try { saved = await idbGet("root"); } catch (_) {}
+  if (saved && saved.mode === "folder" && saved.handle && Store.canFolder) {
+    Store.pending = saved.handle;
+    try { if (await perm(saved.handle, false) === "granted") { Store.root = saved.handle; Store.mode = "folder"; return "ready"; } } catch (_) {}
+    return "permission";
+  }
+  if (saved && saved.mode === "browser") { try { await useBrowserStorage(); return "ready"; } catch (_) {} }
+  return "setup";
+}
+async function chooseFolder() {
+  const picked = await window.showDirectoryPicker({ id: "mpc-paperwork", mode: "readwrite", startIn: "documents" });
+  const root = picked.name === ROOT_NAME ? picked : await picked.getDirectoryHandle(ROOT_NAME, { create: true });
+  Store.root = root; Store.mode = "folder";
+  await idbSet("root", { mode: "folder", handle: root });
+}
+async function useBrowserStorage() {
+  const o = await navigator.storage.getDirectory();
+  Store.root = await o.getDirectoryHandle(ROOT_NAME, { create: true }); Store.mode = "browser";
+  try { await idbSet("root", { mode: "browser" }); } catch (_) {}
+}
+async function dirAt(parts, create = false) { let d = Store.root; for (const p of parts) d = await d.getDirectoryHandle(p, { create }); return d; }
+async function readBytes(dir, name) {
+  try { const f = await (await dir.getFileHandle(name)).getFile(); return new Uint8Array(await f.arrayBuffer()); }
+  catch (e) { if (e && (e.name === "NotFoundError" || e.name === "TypeError")) return null; throw e; }
+}
+async function fileInfo(dir, name) { try { return await (await dir.getFileHandle(name)).getFile(); } catch (_) { return null; } }
+async function writeBytes(dir, name, bytes) {
+  const fh = await dir.getFileHandle(name, { create: true });
+  const w = await fh.createWritable(); await w.write(bytes); await w.close();
+}
+async function exists(dir, name) { try { await dir.getDirectoryHandle(name); return true; } catch (_) { try { await dir.getFileHandle(name); return true; } catch (__) { return false; } } }
+async function listNames(dir, kind) { const out = []; for await (const [n, h] of dir.entries()) if (!kind || h.kind === kind) out.push(n); return out; }
+const safeName = (s) => String(s).replace(/[<>:"/\\|?*\u0000-\u001f]/g, "").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "Customer";
+
+/* names, matching the scripts' own file naming */
+function lastNameOf(name, fixCase) {
+  const parts = String(name).replace(/[^\w\-' ]/g, "").split(/\s+/).filter(Boolean);
+  let last = parts.length ? parts[parts.length - 1] : "Customer";
+  if (fixCase && (last === last.toUpperCase() || last === last.toLowerCase())) last = last[0].toUpperCase() + last.slice(1).toLowerCase();
+  return last;
+}
+function folderNameFor(name) {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return safeName(parts[0] || "Customer");
+  return safeName(parts[parts.length - 1] + ", " + parts.slice(0, -1).join(" "));
+}
+
+/* ================================================================ jobs */
+let JOBS = [];
+async function loadJobs() {
+  const out = [];
+  for (const y of await listNames(Store.root, "directory")) {
+    if (!/^\d{4}$/.test(y)) continue;
+    const yd = await Store.root.getDirectoryHandle(y);
+    for (const m of await listNames(yd, "directory")) {
+      const md = await yd.getDirectoryHandle(m);
+      for (const c of await listNames(md, "directory")) {
+        const cd = await md.getDirectoryHandle(c);
+        const b = await readBytes(cd, JOB_FILE);
+        if (!b) continue;
+        try { const j = JSON.parse(new TextDecoder().decode(b)); j.folder = [y, m, c]; out.push(j); } catch (_) {}
+      }
+    }
+  }
+  out.sort((a, b) => String(b.updated).localeCompare(String(a.updated)));
+  JOBS = out;
+  return out;
+}
+async function createJob(name) {
+  const d = new Date();
+  const y = String(d.getFullYear()), m = pad2(d.getMonth() + 1) + " - " + MONTHS[d.getMonth()];
+  const md = await dirAt([y, m], true);
+  const base = folderNameFor(name); let folder = base, n = 2;
+  while (await exists(md, folder)) folder = base + " (" + (n++) + ")";
+  await md.getDirectoryHandle(folder, { create: true });
+  return { app: ROOT_NAME, v: 1, id: uid(), created: nowIso(), updated: nowIso(), folder: [y, m, folder], name, address: "", city: "", phone: "", estimate: null, contract: null, invoice: null, photo: null };
+}
+async function saveJob(job) {
+  job.updated = nowIso();
+  await writeBytes(await dirAt(job.folder), JOB_FILE, utf8(JSON.stringify(job, null, 2)));
+  const i = JOBS.findIndex(j => j.id === job.id);
+  if (i >= 0) JOBS[i] = job; else JOBS.unshift(job);
+}
+function setPeople(job, f) {
+  if (!f) return;
+  if (f.name) job.name = f.name;
+  job.address = f.address || ""; job.city = f.city_state_zip || ""; job.phone = f.phone || "";
+}
+/* Save a document, moving the one it replaces into "Older versions". */
+async function saveDoc(job, kind, name, bytes) {
+  const d = await dirAt(job.folder);
+  const prev = job[kind] && job[kind].file;
+  if (prev) {
+    const old = await readBytes(d, prev);
+    if (old) {
+      const od = await d.getDirectoryHandle(OLDER, { create: true });
+      const when = new Date(job[kind].made || Date.now());
+      const stamp = when.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + " " +
+        when.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(":", "-");
+      const stem = prev.replace(/\.pdf$/i, "");
+      let oname = stem + " (" + stamp + ").pdf", k = 2;
+      while (await exists(od, oname)) oname = stem + " (" + stamp + ", " + (k++) + ").pdf";
+      await writeBytes(od, oname, old);
+      try { await d.removeEntry(prev); } catch (_) {}
+    }
+  }
+  await writeBytes(d, name, bytes);
+}
+async function olderVersions(job, kind) {
+  const file = job[kind] && job[kind].file; if (!file) return [];
+  const stem = file.replace(/\.pdf$/i, "");
+  try {
+    const od = await (await dirAt(job.folder)).getDirectoryHandle(OLDER);
+    return (await listNames(od, "file")).filter(n => n.startsWith(stem + " (")).sort().reverse();
+  } catch (_) { return []; }
+}
+
+/* ================================================================ blank forms (built-in, or a replacement in the folder) */
+const FORM_INFO = {
+  estimate: { title: "Estimate", file: "Estimate form.pdf", must: /Estimate\s+Expires/i },
+  contract: { title: "Sales Contract", file: "Sales Contract form.pdf", must: /Sales\s*Contract[\s\S]*Final\s*Due|Final\s*Due[\s\S]*Sales\s*Contract/i },
+  invoice: { title: "Final Invoice/Receipt", file: "Final Invoice form.pdf", must: /Contract\s*Amount[\s\S]*Balance\s*Due/i },
+};
+async function customForm(kind) {
+  try { const d = await Store.root.getDirectoryHandle(FORMS_DIR); return await readBytes(d, FORM_INFO[kind].file); } catch (_) { return null; }
+}
+async function formPath(kind, files) {
+  const b = await customForm(kind);
+  if (!b) throw new BuildError("The blank " + FORM_INFO[kind].title + " form hasn't been added yet. Add it in Settings, under Blank forms.");
+  files["form-" + kind + ".pdf"] = b;
+  return "/mpc/job/form-" + kind + ".pdf";
+}
+async function formsMissing() { const out = []; for (const k of ["estimate", "contract", "invoice"]) if (!(await customForm(k))) out.push(k); return out; }
+async function saveForm(kind, f) {
+  const info = FORM_INFO[kind];
+  if (!isPdf(f)) throw new Error("That isn't a PDF.");
+  const bytes = new Uint8Array(await f.arrayBuffer());
+  const t = await pdfText(bytes);
+  if (t !== null && !info.must.test(t)) throw new Error("That doesn't look like the blank " + info.title + " form. Nothing was changed.");
+  await writeBytes(await Store.root.getDirectoryHandle(FORMS_DIR, { create: true }), info.file, bytes);
+}
+/* after the folder is open: ask for the blank forms the first time, otherwise show the jobs */
+async function enterApp() { try { await loadJobs(); } catch (e) { console.error(e); } go((await formsMissing()).length ? "forms" : "home"); }
+
+/* ================================================================ building documents */
+/* Long estimates: if the usual spacing doesn't fit on the form, try tighter spacing. */
+const LAYOUTS = [[2, 3], [2, 2], [1, 2], [1, 1]];   // [lines from text to its price, lines from price to next item]
+async function buildEstimate(det) {
+  let last;
+  for (let lv = 0; lv < LAYOUTS.length; lv++) {
+    const files = { "transcription.json": utf8(JSON.stringify(toTranscription(det, lv), null, 1)) };
+    const tpl = await formPath("estimate", files);
+    try { return finish(await runScript("build_estimate.py", [tpl, "/mpc/job/transcription.json", "/mpc/out"], files)); }
+    catch (e) { last = e; if (!/needs more than the template/.test(e && e.message || "")) throw e; }
+  }
+  throw new BuildError("This estimate has more writing than fits on one form, even with the spacing tightened. Shorten some of the items, then try again.");
+}
+async function buildContract(estBytes, cust, order) {
+  const files = { "estimate.pdf": estBytes };
+  const tpl = await formPath("contract", files);
+  return finish(await runScript("build_contract.py", ["/mpc/job/estimate.pdf", tpl, cust, order, "/mpc/out"], files));
+}
+async function buildInvoice(conBytes, o) {
+  const files = { "contract.pdf": conBytes };
+  const tpl = await formPath("invoice", files);
+  const args = ["/mpc/job/contract.pdf", tpl, "/mpc/out"];
+  if (o.pay === "money") args.push("--money-received", o.received, "--amount-due", o.due);
+  if (o.no_gaps) { args.push("--no-gaps"); const g = String(o.gap_before || "").replace(/\s+/g, ""); if (g) args.push("--gap-before", g); }
+  return finish(await runScript("build_invoice.py", args, files));
+}
+/* the estimate a contract is built from: the saved estimate, or the contract's own changed details */
+async function estimateBytesForContract(job) {
+  if (job.contract && job.contract.details) return (await buildEstimate(job.contract.details)).bytes;
+  const b = job.estimate && await readBytes(await dirAt(job.folder), job.estimate.file);
+  if (!b) throw new BuildError("The estimate PDF for this job is missing from its folder, so the contract can't be made.");
+  return b;
+}
+async function makeContract(job, cust, order) {
+  const est = await estimateBytesForContract(job);
+  const r = await buildContract(est, cust, order);
+  await saveDoc(job, "contract", r.name, r.bytes);
+  job.contract = Object.assign(job.contract || {}, { customer_no: cust, order_no: order, file: r.name, made: nowIso(), total: r.rep.total, deposit: r.rep.deposit, final_due: r.rep.final_due, warnings: r.rep.warnings || [] });
+  if (!job.estimate) setPeople(job, r.rep.fields && { name: r.rep.fields["Name:"], address: r.rep.fields["Address:"], city_state_zip: r.rep.fields["City/State/Zip:"], phone: r.rep.fields["Phone:"] });
+  return r;
+}
+async function makeInvoice(job, o) {
+  const con = await readBytes(await dirAt(job.folder), job.contract.file);
+  if (!con) throw new BuildError("The sales contract PDF for this job is missing from its folder, so the invoice can't be made.");
+  const r = await buildInvoice(con, o);
+  await saveDoc(job, "invoice", r.name, r.bytes);
+  job.invoice = Object.assign({}, o, { file: r.name, made: nowIso(), contract_amount: r.rep.contract_amount, received_label: r.rep.money_received !== undefined ? "Money Received" : "Deposit Received", received_amount: r.rep.money_received !== undefined ? r.rep.money_received : r.rep.deposit_received, balance_due: r.rep.balance_due, warnings: r.rep.warnings || [] });
+  return r;
+}
+
+/* ================================================================ dialogs, busy state, files */
+const dlg = $("#dlg");
+let busyOpen = false;
+dlg.addEventListener("cancel", (e) => { if (busyOpen) e.preventDefault(); });
+function ask({ title, text, html, buttons }) {
+  return new Promise((resolve) => {
+    $("#dlg-body").innerHTML = '<h3>' + esc(title) + '</h3>' + (text ? '<p>' + esc(text) + '</p>' : "") + (html || "") +
+      '<div class="row">' + buttons.map((b, i) => '<button type="button" class="btn ' + (b.kind || "btn-secondary") + '" data-i="' + i + '">' + esc(b.label) + '</button>').join("") + '</div>';
+    // Only Esc (the "cancel" event) counts as backing out; a "close" event left over from an earlier
+    // busy box must not answer this question.
+    const done = (v) => { dlg.removeEventListener("cancel", onCancel); if (dlg.open) dlg.close(); resolve(v); };
+    const onCancel = (e) => { e.preventDefault(); done(null); };
+    dlg.addEventListener("cancel", onCancel);
+    $$("#dlg-body [data-i]").forEach(b => b.addEventListener("click", () => done(buttons[+b.dataset.i].value)));
+    if (!dlg.open) dlg.showModal();
+    const prim = $("#dlg-body .btn-primary") || $("#dlg-body [data-i]"); if (prim) prim.focus();
+  });
+}
+function busy(text) {
+  busyOpen = true;
+  $("#dlg-body").innerHTML = '<div class="busy"><span class="spin"></span><span id="busy-text">' + esc(text) + '</span></div>';
+  if (!dlg.open) dlg.showModal();
+}
+function busyText(text) { const t = $("#busy-text"); if (t) t.textContent = text; }
+function unbusy() { busyOpen = false; if (dlg.open) dlg.close(); }
+async function showError(err, title) {
+  unbusy();
+  const details = err && err.details ? '<details><summary class="small muted">Technical details</summary><div class="note"><pre>' + esc(err.details) + '</pre></div></details>' : "";
+  await ask({ title: title || "That didn't work", text: (err && err.message) || String(err), html: details, buttons: [{ label: "OK", value: true, kind: "btn-primary" }] });
+}
+let downloadsP = null;
+async function offerFile(name, bytes) {
+  if (inArtifact) {
+    if (!downloadsP) downloadsP = window.claude.use("downloads").catch(() => null);
+    const d = await downloadsP;
+    if (!d) return showError(new Error("Saving a copy isn't available in this preview."));
+    try { await d.save({ filename: name, data: new Blob([bytes], { type: "application/pdf" }) }); }
+    catch (e) { if (!e || e.code !== "declined") showError(new Error("The file couldn't be saved here (" + ((e && e.code) || "error") + ").")); }
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+function openPdf(bytes, name) {
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  const w = window.open(url, "_blank");
+  if (!w) { URL.revokeObjectURL(url); return offerFile(name, bytes); }
+  setTimeout(() => URL.revokeObjectURL(url), 600000);
+}
+async function renderPdf(bytes, holder) {
+  holder.innerHTML = "";
+  if (!window.pdfjsLib) { holder.innerHTML = '<p class="ph">The preview isn\'t available, but the PDF is saved.</p>'; return; }
+  try {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    const page = await doc.getPage(1);
+    const want = Math.max(600, Math.min(1400, (holder.clientWidth || 700) * (window.devicePixelRatio || 1)));
+    const vp = page.getViewport({ scale: want / page.getViewport({ scale: 1 }).width });
+    const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    cv.setAttribute("role", "img"); cv.setAttribute("aria-label", "Preview of the PDF");
+    holder.appendChild(cv);
+    await page.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+    doc.destroy();
+  } catch (_) { holder.innerHTML = '<p class="ph">The preview couldn\'t be drawn, but the PDF is saved.</p>'; }
+}
+async function pdfText(bytes) {
+  if (!window.pdfjsLib) return null;
+  try {
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    const tc = await (await doc.getPage(1)).getTextContent(); doc.destroy();
+    return tc.items.map(i => i.str).join(" ");
+  } catch (_) { return ""; }
+}
+function pickFile(accept) {
+  return new Promise((resolve) => {
+    const i = document.createElement("input"); i.type = "file"; i.accept = accept; i.style.display = "none";
+    i.addEventListener("change", () => { resolve(i.files[0] || null); i.remove(); });
+    document.body.appendChild(i); i.click();
+  });
+}
+const isPdf = (f) => /\.pdf$/i.test(f.name) || f.type === "application/pdf";
+
+/* ================================================================ estimate details (customer + items) */
+const todayStr = () => { const d = new Date(); return (d.getMonth() + 1) + "-" + d.getDate() + "-" + String(d.getFullYear()).slice(2); };
+const blankDetails = () => ({ name: "", address: "", city_state_zip: "", phone: "", windows: "", doors: "", patio_doors: "", other: "", date: todayStr(), total: "", totalAuto: true, items: [{ text: "", price: "" }] });
+/* Older saved details used ruled-line numbers; turn them into items. */
+function upgradeDetails(d) {
+  if (!d) return blankDetails();
+  if (Array.isArray(d.items)) return d;
+  const out = Object.assign(blankDetails(), d); delete out.lines; out.items = []; out.totalAuto = false;
+  for (const l of (d.lines || []).slice().sort((a, b) => a.line - b.line)) {
+    const t = String(l.text || "").trim(); if (!t) continue;
+    const last = out.items[out.items.length - 1];
+    if (/^\$\s?[\d,]+\.\d\d$/.test(t)) { if (last && !last.price) last.price = t.replace(/^\$\s?/, ""); else out.items.push({ text: "", price: t.replace(/^\$\s?/, "") }); }
+    else if (l.continues && last && !last.price) last.text = (last.text + " " + t).trim();
+    else out.items.push({ text: t, price: "" });
+  }
+  if (!out.items.length) out.items.push({ text: "", price: "" });
+  return out;
+}
+const parseMoney = (s) => { const t = String(s || "").replace(/[$,\s]/g, ""); if (!t) return null; if (!/^\d+(\.\d{1,2})?$/.test(t)) return NaN; return Math.round(parseFloat(t) * 100); };
+const money = (c) => (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const itemsSum = (det) => det.items.map(i => parseMoney(i.price)).filter(c => c !== null && !isNaN(c)).reduce((a, b) => a + b, 0);
+const HEAD_KEYS = ["name", "address", "city_state_zip", "phone", "windows", "doors", "patio_doors", "other", "date"];
+/* Lay the items out the way the office approved: description, one blank line, the price
+   (underlined, on the right), then two blank lines before the next item. */
+function toTranscription(det, level) {
+  const [gapP, gapN] = LAYOUTS[level || 0];
+  det = upgradeDetails(det);
+  const d = {};
+  for (const k of HEAD_KEYS) d[k] = String(det[k] || "").trim();
+  const tc = parseMoney(det.total);
+  d.total = tc === null ? "" : isNaN(tc) ? String(det.total).trim() : money(tc);   // words like "Choose options" print as written
+  const desc = []; let L = 1;
+  for (const it of det.items) {
+    const text = String(it.text || "").replace(/\s*\n\s*/g, " ").trim();
+    const pc = parseMoney(it.price);
+    if (pc !== null && isNaN(pc)) throw new BuildError('The price "' + it.price + '" isn\'t a dollar amount. Type it like 2,307.79.');
+    if (!text && pc === null) continue;
+    if (text) desc.push({ line: L, items: [{ at: 0, text }] });
+    if (pc !== null) { if (text) L += gapP; desc.push({ line: L, items: [{ at: 76.5, text: "$" + money(pc), underline: true }] }); }
+    L += gapN;
+  }
+  d.description = desc;
+  return d;
+}
+const detailsReady = (det) => String(det.name || "").trim() && det.items.some(i => String(i.text || "").trim() || String(i.price || "").trim());
+const sameDetails = (a, b) => JSON.stringify(upgradeDetails(clone(a))) === JSON.stringify(upgradeDetails(clone(b)));
+
+function detailsForm(holder, det, onChange) {
+  const f = (k, label, ph, extra) => '<div class="field"><label for="d-' + k + '">' + label + '</label><input type="text" id="d-' + k + '" data-k="' + k + '" autocomplete="off" placeholder="' + esc(ph || "") + '" value="' + esc(det[k]) + '"' + (extra || "") + '></div>';
+  holder.innerHTML =
+    '<div class="card-head"><span class="section-title">Customer</span></div>' +
+    '<div class="grid2">' + f("name", "Name", "") + f("phone", "Phone", "", ' inputmode="tel"') + f("address", "Address", "") + f("city_state_zip", "City / State / Zip", "") + '</div>' +
+    '<div class="grid4">' + f("windows", "Windows", "", ' inputmode="numeric"') + f("doors", "Doors", "", ' inputmode="numeric"') + f("patio_doors", "Patio doors", "", ' inputmode="numeric"') + f("other", "Other", "") + f("date", "Estimate date", "") + '</div>' +
+    '<div class="sep"></div>' +
+    '<div class="card-head"><span class="section-title">Work</span><p class="hint">One box per item, typed the way it\'s written. Leave the price empty for notes like "Customer responsible for painting trim work".</p></div>' +
+    '<div class="items" id="items"></div>' +
+    '<div><button class="btn btn-secondary" type="button" id="add-item">+ Add another item</button></div>' +
+    '<div class="sep"></div>' +
+    '<div class="totals"><div id="total-msg" aria-live="polite"></div><div class="field"><label for="d-total">Total</label><div class="money-in"><input type="text" id="d-total" inputmode="decimal" autocomplete="off" placeholder="0.00"></div></div></div>';
+  const changed = () => { onChange && onChange(); };
+  $$(".grid2 input, .grid4 input", holder).forEach(i => i.addEventListener("input", () => { det[i.dataset.k] = i.value; changed(); }));
+  const box = $("#items", holder);
+  const totalIn = $("#d-total", holder);
+  function syncTotal() {
+    const sum = itemsSum(det);
+    if (det.totalAuto) { det.total = sum ? money(sum) : ""; totalIn.value = det.total; }
+    const tc = parseMoney(det.total);
+    let msg = "";
+    if (det.totalAuto) msg = sum ? '<p class="hint">Added up from the prices. Change it if the handwritten Total is different.</p>' : "";
+    else if (tc !== null && !isNaN(tc) && sum && tc !== sum) msg = '<div class="note warn">The prices add up to $' + money(sum) + ', but the Total is $' + money(tc) + '. Don\'t change a number to make it match. Check the handwriting.</div>';
+    else if (tc !== null && isNaN(tc)) msg = /\d/.test(det.total) ? '<div class="note warn">Type the Total like 3,201.47.</div>' : '<p class="hint">The Total will be typed as written, in words.</p>';
+    else if (tc !== null && sum && tc === sum) msg = '<div class="note ok">The prices add up to the Total.</div>';
+    $("#total-msg", holder).innerHTML = msg;
+  }
+  function drawItems() {
+    box.innerHTML = det.items.map((it, i) =>
+      '<div class="item"><span class="num" aria-hidden="true">' + (i + 1) + '</span>' +
+      '<div class="field"><label class="sr" for="it-t-' + i + '">Item ' + (i + 1) + ' description</label><textarea id="it-t-' + i + '" data-i="' + i + '" rows="3" placeholder="' + (i === 0 ? "Describe the work, the way it's written" : "Description") + '">' + esc(it.text) + '</textarea></div>' +
+      '<div class="field price"><label class="sr" for="it-p-' + i + '">Item ' + (i + 1) + ' price</label><div class="money-in"><input type="text" id="it-p-' + i + '" data-i="' + i + '" inputmode="decimal" autocomplete="off" placeholder="Price" value="' + esc(it.price) + '"></div></div>' +
+      '<button type="button" class="x" aria-label="Remove item ' + (i + 1) + '" data-del="' + i + '">×</button></div>').join("");
+    const fit = (t) => { t.style.height = "auto"; t.style.height = (t.scrollHeight + 2) + "px"; };
+    $$("textarea", box).forEach(t => { fit(t); t.addEventListener("input", () => { fit(t); det.items[+t.dataset.i].text = t.value; changed(); }); });
+    $$(".price input", box).forEach(p => {
+      p.addEventListener("input", () => { det.items[+p.dataset.i].price = p.value; syncTotal(); changed(); });
+      p.addEventListener("blur", () => { const c = parseMoney(p.value); if (c !== null && !isNaN(c)) { p.value = money(c); det.items[+p.dataset.i].price = p.value; syncTotal(); changed(); } });
+    });
+    $$("[data-del]", box).forEach(b => b.addEventListener("click", () => { det.items.splice(+b.dataset.del, 1); if (!det.items.length) det.items.push({ text: "", price: "" }); drawItems(); syncTotal(); changed(); }));
+  }
+  $("#add-item", holder).addEventListener("click", () => { det.items.push({ text: "", price: "" }); drawItems(); changed(); const t = $("#it-t-" + (det.items.length - 1)); if (t) t.focus(); });
+  totalIn.addEventListener("input", () => { det.total = totalIn.value; det.totalAuto = !totalIn.value.trim(); syncTotal(); changed(); });
+  totalIn.addEventListener("blur", () => { const c = parseMoney(totalIn.value); if (c !== null && !isNaN(c)) { totalIn.value = money(c); det.total = totalIn.value; syncTotal(); changed(); } });
+  drawItems();
+  totalIn.value = det.total || "";
+  syncTotal();
+}
+
+/* ================================================================ views */
+const view = $("#view");
+let current = { name: "home" };
+function refreshReadyBits() {
+  $$("[data-needs-engine]").forEach(b => { b.disabled = !engine.ready || b.dataset.blocked === "1"; });
+  $$("[data-engine-why]").forEach(p => { p.textContent = engine.ready ? "" : (engine.failMessage ? "The paperwork tools couldn't start. Close the program and open it again." : "Getting ready. This takes a few seconds the first time."); });
+}
+function setFoot() {
+  $("#foot").textContent = Store.mode === "folder"
+    ? "Saved in your " + (Store.root ? Store.root.name : ROOT_NAME) + " folder · Nothing is uploaded · Version " + APP_VERSION
+    : Store.mode === "browser" ? "Preview · Files are kept in this browser only · Version " + APP_VERSION : "Version " + APP_VERSION;
+}
+let activeDict = null;
+function go(name, opts) { if (activeDict && activeDict.stop) activeDict.stop(); activeDict = null; current = Object.assign({ name }, opts || {}); render(); window.scrollTo(0, 0); }
+function render() {
+  $("#go-settings").hidden = !Store.root || ["setup", "permission", "forms"].includes(current.name);
+  setFoot();
+  ({ setup: viewSetup, permission: viewPermission, forms: viewForms, home: viewHome, newjob: viewNewJob, editor: viewEditor, job: viewJob, settings: viewSettings })[current.name]();
+}
+$("#go-home").addEventListener("click", () => { if (Store.root) go("home"); });
+$("#go-settings").addEventListener("click", () => go("settings"));
+const backBtn = (label) => '<button class="btn btn-text back" type="button" id="back">← ' + esc(label) + '</button>';
+const ARROW = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const CHECK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+/* ---------- first run */
+function viewSetup() {
+  const folderOK = Store.canFolder;
+  view.innerHTML = '<div class="narrow"><div class="card">' +
+    '<div class="card-head"><h2>Welcome</h2><p class="muted">First, choose where the paperwork is saved.</p></div>' +
+    (folderOK
+      ? '<p>Pick a folder once, like Documents or your Google Drive folder. A <b>' + ROOT_NAME + '</b> folder is made inside it, and every estimate, contract and invoice is saved there by year, month and customer.</p>' +
+        '<button class="btn btn-primary btn-lg btn-block" type="button" id="pick">Choose a folder</button>' +
+        '<p class="hint">Chrome or Edge will ask to let the program save there. If you see "Allow on every visit", choose it.</p>'
+      : '<p>' + (window.top !== window ? "This preview can't reach folders on your computer, so files are kept in this browser." : "This browser can't save to a folder. Use Chrome or Edge on a computer for that. For now, files can be kept in this browser.") + '</p>' +
+        '<button class="btn btn-primary btn-lg btn-block" type="button" id="browser">Keep files in this browser</button>') +
+    '</div></div>';
+  if (folderOK) $("#pick").addEventListener("click", async () => {
+    try { await chooseFolder(); } catch (e) { if (e && e.name === "AbortError") return; return showError(e); }
+    await enterApp();
+  });
+  else $("#browser").addEventListener("click", async () => {
+    try { await useBrowserStorage(); } catch (e) { return showError(new Error("This browser won't let the program keep files.")); }
+    await enterApp();
+  });
+}
+function viewPermission() {
+  view.innerHTML = '<div class="narrow"><div class="card"><div class="card-head"><h2>Welcome back</h2><p class="muted">Click to open your paperwork folder.</p></div>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="allow">Open ' + esc(Store.pending.name) + '</button>' +
+    '<button class="btn btn-text" type="button" id="other">Use a different folder</button></div></div>';
+  $("#allow").addEventListener("click", async () => {
+    try { if (await perm(Store.pending, true) !== "granted") return; } catch (e) { return showError(e); }
+    Store.root = Store.pending; Store.mode = "folder"; await enterApp();
+  });
+  $("#other").addEventListener("click", () => go("setup"));
+}
+
+/* ---------- first run: the three blank forms */
+async function viewForms() {
+  const have = {};
+  for (const k of ["estimate", "contract", "invoice"]) have[k] = !!(await customForm(k));
+  const all = Object.values(have).every(Boolean);
+  view.innerHTML = '<div class="narrow" style="max-width:620px"><div class="card">' +
+    '<div class="card-head"><span class="section-title">One-time setup</span><h2>Add the three blank forms</h2>' +
+    '<p class="muted">The empty Estimate, Sales Contract and Final Invoice forms that everything is typed onto. They\'re saved in your paperwork folder, not online. You only do this once.</p></div>' +
+    '<div class="settings-list">' + ["estimate", "contract", "invoice"].map(k =>
+      '<div class="form-row"><div><b>' + esc(FORM_INFO[k].title) + '</b><p class="hint">' + (have[k] ? '<span class="done-badge">' + CHECK + ' Added</span>' : "The blank PDF") + '</p></div>' +
+      '<button class="btn ' + (have[k] ? "btn-secondary" : "btn-primary") + '" type="button" data-add="' + k + '">' + (have[k] ? "Replace" : "Add") + '</button></div>').join("") + '</div>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="cont"' + (all ? "" : " disabled") + '>Continue</button>' +
+    (all ? "" : '<p class="why">Add all three to continue.</p>') + '</div></div>';
+  $$("[data-add]").forEach(b => b.addEventListener("click", async () => {
+    const f = await pickFile("application/pdf,.pdf"); if (!f) return;
+    try { await saveForm(b.dataset.add, f); } catch (e) { return showError(e); }
+    viewForms();
+  }));
+  $("#cont").addEventListener("click", () => go("home"));
+}
+
+/* ---------- jobs list */
+const SEARCH_ICO = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>';
+function viewHome() {
+  view.innerHTML =
+    '<div class="page-head"><h2>Jobs</h2><div class="row">' +
+    (JOBS.length ? '<div class="search">' + SEARCH_ICO + '<input type="search" id="q" placeholder="Search jobs" aria-label="Search jobs" value="' + esc(current.q || "") + '"></div>' : "") +
+    '<button class="btn btn-primary btn-lg" type="button" id="new">+ New job</button></div></div><div id="list" style="display:grid;gap:22px"></div>';
+  $("#new").addEventListener("click", () => go("newjob"));
+  if ($("#q")) $("#q").addEventListener("input", (e) => { current.q = e.target.value; drawList(); });
+  drawList();
+}
+function jobStatus(j) {
+  if (j.invoice) return ["Complete", "s3"];
+  if (j.contract) return ["Needs final invoice", "s2"];
+  if (j.estimate) return ["Needs sales contract", "s1"];
+  return ["Not started", "s0"];
+}
+function drawList() {
+  const q = String(current.q || "").trim().toLowerCase();
+  const jobs = JOBS.filter(j => !q || [j.name, j.address, j.city, j.phone, j.contract && j.contract.customer_no, j.contract && j.contract.order_no].join(" ").toLowerCase().includes(q));
+  const list = $("#list");
+  if (!JOBS.length) {
+    list.innerHTML = '<div class="empty"><h3>No jobs yet</h3><p class="muted">Start with a handwritten estimate. The program walks you through the sales contract and final invoice after it.</p><button class="btn btn-primary" type="button" id="new2">+ New job</button></div>';
+    $("#new2").addEventListener("click", () => go("newjob"));
+    return;
+  }
+  if (!jobs.length) { list.innerHTML = '<div class="empty"><p class="muted">No jobs match "' + esc(current.q) + '".</p></div>'; return; }
+  const groups = new Map();
+  for (const j of jobs) { const k = j.folder[0] + "/" + j.folder[1]; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(j); }
+  const keys = [...groups.keys()].sort().reverse();
+  list.innerHTML = keys.map(k => {
+    const [y, m] = k.split("/"); const label = (m.split(" - ")[1] || m) + " " + y;
+    return '<section class="group"><h3 class="month">' + esc(label) + '</h3><ul class="jobs">' + groups.get(k).map(j => {
+      const [st, cls] = jobStatus(j);
+      return '<li><button class="job-row" type="button" data-id="' + esc(j.id) + '"><span><span class="job-name">' + esc(j.name || "Customer") + '</span><br>' +
+        '<span class="job-sub">' + esc([j.address, j.city].filter(Boolean).join(", ")) + (j.address || j.city ? " · " : "") + 'Changed ' + esc(niceDate(j.updated)) + '</span></span>' +
+        '<span class="status ' + cls + '">' + esc(st) + '</span><span class="chev" aria-hidden="true">›</span></button></li>';
+    }).join("") + '</ul></section>';
+  }).join("");
+  $$(".job-row", list).forEach(b => b.addEventListener("click", () => openJob(b.dataset.id)));
+}
+function nextStep(job) { return !job.estimate && !job.contract ? "estimate" : !job.contract ? "contract" : !job.invoice ? "invoice" : "invoice"; }
+function openJob(id, tab) {
+  const job = JOBS.find(j => j.id === id); if (!job) return go("home");
+  go("job", { id, tab: tab || nextStep(job) });
+}
+
+/* ---------- new job */
+function viewNewJob() {
+  view.innerHTML = backBtn("All jobs") +
+    '<div class="narrow" style="margin-top:0;max-width:640px"><div style="display:grid;gap:20px">' +
+    '<div class="card-head"><h2>New job</h2><p class="muted">Most jobs start from a handwritten estimate.</p></div>' +
+    '<div class="starts">' +
+      '<button class="start-main" type="button" id="s-type"><span class="start-ico"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span>' +
+        '<span><b style="font-size:18px">Type a handwritten estimate</b><br><span class="muted small">Step 1 of 3. You\'ll make the sales contract and final invoice after it.</span></span><span style="color:var(--accent)">' + ARROW + '</span></button>' +
+      '<p class="section-title" style="margin-top:14px">Already have a typed PDF?</p>' +
+      '<button class="start-alt" type="button" id="s-est"><b>Start from a typed estimate PDF</b><span class="muted small">Go straight to the sales contract.</span></button>' +
+      '<button class="start-alt" type="button" id="s-con"><b>Start from a sales contract PDF</b><span class="muted small">Go straight to the final invoice.</span></button>' +
+    '</div><p class="why" data-engine-why></p></div></div>';
+  $("#back").addEventListener("click", () => go("home"));
+  $("#s-type").addEventListener("click", () => go("editor", { mode: "new" }));
+  $("#s-est").addEventListener("click", () => startFromPdf("estimate"));
+  $("#s-con").addEventListener("click", () => startFromPdf("contract"));
+  refreshReadyBits();
+}
+async function startFromPdf(kind) {
+  const f = await pickFile("application/pdf,.pdf"); if (!f) return;
+  if (!isPdf(f)) return showError(new Error("That isn't a PDF."));
+  try {
+    busy("Reading " + f.name + "…");
+    const bytes = new Uint8Array(await f.arrayBuffer());
+    const h = await readHeader(bytes);
+    if (h.kind && h.kind !== kind) { unbusy(); return showError(new Error("That file looks like " + (h.kind === "contract" ? "a sales contract" : h.kind === "estimate" ? "an estimate" : "an invoice") + ", not " + (kind === "contract" ? "a sales contract" : "an estimate") + ". Pick the other option.")); }
+    const name = (h.fields && h.fields.name) || "";
+    if (!name) { unbusy(); return showError(new Error("The customer's name couldn't be read from that PDF. Is it the standard Masterpiece form?")); }
+    const job = await createJob(name);
+    setPeople(job, h.fields);
+    const fname = kind === "estimate" ? lastNameOf(name, true) + " Estimate.pdf" : lastNameOf(name, false) + " Sales Contract.pdf";
+    await saveDoc(job, kind, fname, bytes);
+    if (kind === "estimate") job.estimate = { source: "pdf", details: null, file: fname, made: nowIso(), total: h.total || "", date: h.date || "" };
+    else job.contract = { details: null, source: "pdf", customer_no: h.customer_no || "", order_no: h.order_no || "", file: fname, made: nowIso(), total: h.total || "" };
+    await saveJob(job);
+    unbusy();
+    openJob(job.id);
+  } catch (e) { showError(e); }
+}
+
+/* ---------- progress bar */
+function stepsBar(job, active) {
+  const st = [
+    ["estimate", "Estimate", job && job.estimate],
+    ["contract", "Sales Contract", job && job.contract],
+    ["invoice", "Final Invoice", job && job.invoice],
+  ];
+  const next = job ? nextStep(job) : "estimate";
+  return '<ol class="steps" aria-label="Steps">' + st.map(([k, label, d], i) => {
+    const can = job && (d || k === next || (k === "estimate" && job.contract && !job.estimate));
+    const cls = (d ? "done " : "") + (k === active ? "current" : "");
+    const sub = d ? "Done " + niceDate(d.made) : k === next ? "Next" : "Not yet";
+    return '<li><button class="step ' + cls + '" type="button" data-step="' + k + '"' + (can && k !== active ? "" : " disabled") + (k === active ? ' aria-current="step"' : "") + '>' +
+      '<span class="n">' + (d ? CHECK : i + 1) + '</span><span class="t"><b>' + label + '</b><span>' + esc(sub) + '</span></span></button></li>';
+  }).join("") + '</ol>';
+}
+function wireSteps(job) { $$("[data-step]").forEach(b => b.addEventListener("click", () => go("job", { id: job.id, tab: b.dataset.step }))); }
+
+/* ================================================================ dictation (talk instead of type) */
+/* Uses the browser's own speech recognition (Chrome / Edge). The estimate is read aloud one box at a
+   time: say the words, then "next". Spoken text is cleaned up for Masterpiece's wording. */
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+const canDictate = !!SpeechRec && window.top === window;
+const NUMWORDS = { zero: 0, oh: 0, none: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19, twenty: 20 };
+const STATES = { alabama: "AL", alaska: "AK", arizona: "AZ", arkansas: "AR", california: "CA", colorado: "CO", connecticut: "CT", delaware: "DE", florida: "FL", georgia: "GA", hawaii: "HI", idaho: "ID", illinois: "IL", indiana: "IN", iowa: "IA", kansas: "KS", kentucky: "KY", louisiana: "LA", maine: "ME", maryland: "MD", massachusetts: "MA", michigan: "MI", minnesota: "MN", mississippi: "MS", missouri: "MO", montana: "MT", nebraska: "NE", nevada: "NV", "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY", "north carolina": "NC", "north dakota": "ND", ohio: "OH", oklahoma: "OK", oregon: "OR", pennsylvania: "PA", "rhode island": "RI", "south carolina": "SC", "south dakota": "SD", tennessee: "TN", texas: "TX", utah: "UT", vermont: "VT", virginia: "VA", washington: "WA", "west virginia": "WV", wisconsin: "WI", wyoming: "WY" };
+const STREETS = { drive: "Dr.", street: "St.", avenue: "Ave.", road: "Rd.", lane: "Ln.", court: "Ct.", boulevard: "Blvd.", place: "Pl.", circle: "Cir.", parkway: "Pkwy.", terrace: "Ter.", highway: "Hwy." };
+/* Masterpiece's own words that speech recognition tends to get wrong. Add to this list as new ones turn up. */
+const VOCAB = [
+  [/\bply\s?(gem|jem|jim|gym|gen)\b/gi, "Plygem"],
+  [/\bjams\b/gi, "jambs"], [/\bjam\b/gi, "jamb"],
+  [/\b(triple|double|single|dual)\s+(pain|pan|paine)s?\b/gi, (m, a) => a.toLowerCase() + " pane"],
+  [/\b(therma|thermo|thurma)\s?(tru|true|through)\b/gi, "ThermaTru"],
+  [/\bpro\s?via\b/gi, "ProVia"],
+  [/\bpro\s?(200|two hundred)\b/gi, "Pro 200"],
+  [/\bre-?seal\b/gi, "reseal"], [/\bre-?trim\b/gi, "retrim"],
+  [/\btrim\s?work\b/gi, "trim work"],
+  [/\bsimington\b/gi, "Simonton"], [/\bmarvan\b/gi, "Marvin"],
+  [/\bvinal\b/gi, "vinyl"], [/\bsliders\b/gi, "sliders"],
+];
+const DICT_PREFS_KEY = "mpc-dictation";
+const dictPrefs = (() => { try { return Object.assign({ amp: true }, JSON.parse(lsGet(DICT_PREFS_KEY) || "{}")); } catch (_) { return { amp: true }; } })();
+
+function wordsToNumber(t) {
+  const s = String(t).trim().toLowerCase();
+  if (/^\d+$/.test(s)) return s;
+  return s in NUMWORDS ? (NUMWORDS[s] ? String(NUMWORDS[s]) : "") : null;
+}
+function spokenPunct(t) {
+  return t
+    .replace(/^\s*(asterisk|star)\b\s*/i, "*")
+    .replace(/\s*\basterisk\b\s*/gi, " *")
+    .replace(/\s*\b(period|full stop)\b/gi, ".")
+    .replace(/\s*\bcomma\b/gi, ",")
+    .replace(/\s*\bcolon\b/gi, ":")
+    .replace(/\b(open|left)\s+(paren|parenthesis|bracket)\s*/gi, "(")
+    .replace(/\s*\b(close|right)\s+(paren|parenthesis|bracket)\b/gi, ")")
+    .replace(/\bnumber sign\b/gi, "#");
+}
+function sentenceCase(t) {
+  t = t.replace(/^(\*?\s*)([a-z])/, (m, a, b) => a + b.toUpperCase());
+  return t.replace(/([.!?]\s+)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+}
+function cleanDescription(raw, isStart) {
+  let t = spokenPunct(" " + raw + " ");
+  for (const [re, rep] of VOCAB) t = t.replace(re, rep);
+  if (dictPrefs.amp) t = t.replace(/\band\b/gi, "&");
+  t = t.replace(/\s+([.,:)])/g, "$1").replace(/\(\s+/g, "(").replace(/\s{2,}/g, " ").trim();
+  return isStart ? sentenceCase(t) : t;
+}
+function cleanPhone(raw) {
+  const d = raw.replace(/\b(oh|zero)\b/gi, "0").split(/\s+/).map(w => wordsToNumber(w) ?? w).join("").replace(/\D/g, "");
+  if (d.length === 10) return d.slice(0, 3) + "-" + d.slice(3, 6) + "-" + d.slice(6);
+  if (d.length === 11 && d[0] === "1") return d.slice(1, 4) + "-" + d.slice(4, 7) + "-" + d.slice(7);
+  if (d.length === 7) return d.slice(0, 3) + "-" + d.slice(3);
+  return raw.trim();
+}
+function cleanAddress(raw) {
+  let t = spokenPunct(raw).replace(/,/g, "").replace(/\s{2,}/g, " ").trim();
+  t = t.replace(/\b([A-Za-z]+)\b(?=\s*$)/, (w) => STREETS[w.toLowerCase()] || w);
+  return t.replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+}
+function cleanCity(raw) {
+  let t = " " + raw.replace(/,/g, " ").replace(/\./g, "") + " ";
+  for (const [name, ab] of Object.entries(STATES).sort((a, b) => b[0].length - a[0].length)) t = t.replace(new RegExp("\\s" + name + "\\s", "i"), " " + ab + " ");
+  t = t.replace(/(\d)\s+(?=\d)/g, "$1");             // "8 3 6 4 2" -> "83642"
+  t = t.replace(/\s{2,}/g, " ").trim();
+  return t.replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+}
+function cleanCount(raw) { const w = raw.trim().split(/\s+/).pop(); const n = wordsToNumber(w); return n !== null ? n : raw.trim(); }
+function cleanMoney(raw) {
+  let s = String(raw).toLowerCase().replace(/[$,]/g, "").replace(/\s+/g, " ").trim();
+  let m = s.match(/(\d+)(?:\.(\d{1,2}))?\s*dollars?(?:\s*(?:and)?\s*(\d{1,2})\s*cents?)?/);
+  if (m) return money(+m[1] * 100 + (m[3] ? +m[3] : m[2] ? +m[2].padEnd(2, "0") : 0));
+  m = s.match(/^(\d+)(?:\.(\d{1,2}))?$/);
+  if (m) return money(+m[1] * 100 + (m[2] ? +m[2].padEnd(2, "0") : 0));
+  m = s.match(/^(\d+)\s+(?:point\s+|and\s+)?(\d{2})(?:\s*cents?)?$/);
+  if (m) return money(+m[1] * 100 + +m[2]);
+  return raw.trim();
+}
+const COMMAND_RE = /(?:^|\s)(next item|new item|another item|next|skip|go back|back up|scratch that|delete that|clear that|no price|i'?m done|done|finished|stop listening)\.?\s*$/i;
+
+function setupDictation(form, onRerender) {
+  const wrap = document.createElement("div");
+  wrap.className = "dictate";
+  wrap.innerHTML = canDictate
+    ? '<div class="dictate-idle"><button type="button" class="btn btn-mic" id="dict-start">' + MIC + ' Read it aloud</button>' +
+      '<p class="hint">Faster than typing. Press the button and read the estimate out loud. Say <b>"next"</b> after each box.</p></div>' +
+      '<div class="dictate-live" hidden><div class="dict-top"><span class="rec-dot" aria-hidden="true"></span><b>Listening</b><span class="dict-now" id="dict-now"></span></div>' +
+      '<p class="dict-hear" id="dict-hear" aria-live="polite"></p>' +
+      '<div class="row"><button type="button" class="btn btn-primary" id="dict-next">Next box ' + ARROW + '</button><button type="button" class="btn btn-secondary" id="dict-stop">Stop</button></div>' +
+      '<details class="more"><summary>What can I say?</summary><div class="small"><ul class="cmds">' +
+      '<li><b>"next"</b> moves to the next box</li><li><b>"skip"</b> leaves a box empty</li><li><b>"go back"</b> returns to the last box</li>' +
+      '<li><b>"new item"</b> starts the next item</li><li><b>"no price"</b> for a note without a price</li><li><b>"scratch that"</b> clears the box</li>' +
+      '<li><b>"period"</b>, <b>"comma"</b>, <b>"open paren"</b>, <b>"close paren"</b>, <b>"star"</b> for punctuation</li><li><b>"done"</b> stops listening</li></ul>' +
+      '<label class="check"><input type="checkbox" id="dict-amp"' + (dictPrefs.amp ? " checked" : "") + '><span>Write "and" as "&"</span></label>' +
+      '<p class="hint">Speech is turned into text by your browser\'s speech service (Google in Chrome, Microsoft in Edge), so it needs internet. You can also click any box to talk into it.</p></div></details></div>'
+    : '<div class="dictate-idle"><button type="button" class="btn btn-mic" disabled>' + MIC + ' Read it aloud</button>' +
+      '<p class="hint">' + (window.top !== window
+        ? "Talk-to-type is turned off in this preview because the microphone is blocked here. It works in the installed program in Chrome or Edge."
+        : "Talk-to-type needs Chrome or Edge on a computer.") + '</p></div>';
+  if (!canDictate) return wrap;
+  let rec = null, active = false, curId = null, restartTimer = null;
+  const live = $(".dictate-live", wrap), idle = $(".dictate-idle", wrap);
+  const LABELS = { "d-name": "Name", "d-phone": "Phone", "d-address": "Address", "d-city_state_zip": "City / State / Zip", "d-windows": "Windows", "d-doors": "Doors", "d-patio_doors": "Patio doors", "d-other": "Other" };
+  const targets = () => {
+    const out = Object.keys(LABELS).map(id => form.querySelector("#" + id)).filter(Boolean);
+    $$("#items .item", form).forEach((row, i) => { const t = $("textarea", row), p = $(".price input", row); if (t) out.push(t); if (p) out.push(p); });
+    return out;
+  };
+  const labelOf = (el) => {
+    if (!el) return "";
+    if (LABELS[el.id]) return LABELS[el.id];
+    const m = el.id.match(/^it-([tp])-(\d+)$/);
+    return m ? "Item " + (+m[2] + 1) + (m[1] === "t" ? " description" : " price") : "";
+  };
+  const current = () => curId && form.querySelector("#" + curId);
+  function setTarget(el) {
+    $$(".dict-target", form).forEach(x => x.classList.remove("dict-target"));
+    curId = el ? el.id : null;
+    if (!el) return;
+    el.classList.add("dict-target");
+    el.focus({ preventScroll: true });
+    el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    $("#dict-now").textContent = "Now: " + labelOf(el);
+    $("#dict-hear").textContent = el.id.startsWith("it-p") ? 'Say the price, or "no price".' : el.id.startsWith("it-t") ? 'Read the item. Say "next" for its price.' : 'Say the ' + labelOf(el).toLowerCase() + ', then "next".';
+  }
+  function newItem() { $("#add-item", form).click(); const ts = $$("#items textarea", form); setTarget(ts[ts.length - 1]); }
+  function move(step) {
+    const list = targets(); const i = list.findIndex(e => e.id === curId);
+    const nx = list[i + step];
+    if (nx) return setTarget(nx);
+    if (step > 0) newItem();
+  }
+  function put(el, text) {
+    if (!text) return;
+    const id = el.id;
+    let v;
+    if (id === "d-phone") v = cleanPhone(text);
+    else if (id === "d-city_state_zip") v = cleanCity(text);
+    else if (id === "d-address") v = cleanAddress(((el.value || "") + " " + text).trim());
+    else if (["d-windows", "d-doors", "d-patio_doors"].includes(id)) v = cleanCount(text);
+    else if (id.startsWith("it-p")) v = cleanMoney(text);
+    else if (id.startsWith("it-t")) { const prev = el.value.trim(); v = sentenceCase((prev ? prev + " " : "") + cleanDescription(text, !prev || /[.!?]$/.test(prev))); }
+    else if (id === "d-name") v = ((el.value || "") + " " + text).trim().replace(/(^|\s)([a-z])/g, (m, a, b) => a + b.toUpperCase());
+    else v = ((el.value || "") + " " + spokenPunct(text)).trim().replace(/^[a-z]/, (c) => c.toUpperCase());
+    el.value = v;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    if (id.startsWith("it-p")) el.dispatchEvent(new Event("blur"));
+  }
+  function handleFinal(text) {
+    let t = text.trim(); if (!t) return;
+    const el = current(); if (!el) return;
+    const m = t.match(COMMAND_RE);
+    let cmd = null;
+    if (m) { cmd = m[1].toLowerCase().replace(/[’']/g, "'"); t = t.slice(0, m.index).trim(); }
+    if (t) put(el, t);
+    if (!cmd) { $("#dict-hear").textContent = "Heard: " + text.trim(); return; }
+    if (cmd === "next") { if (el.id.startsWith("it-p")) return newItem(); return move(1); }
+    if (cmd === "skip" || cmd === "no price") return move(1);
+    if (cmd === "next item" || cmd === "new item" || cmd === "another item") return newItem();
+    if (cmd === "go back" || cmd === "back up") return move(-1);
+    if (/scratch|delete|clear/.test(cmd)) { el.value = ""; el.dispatchEvent(new Event("input", { bubbles: true })); $("#dict-hear").textContent = "Cleared. Say it again."; return; }
+    return stop();
+  }
+  function startRec() {
+    rec = new SpeechRec();
+    rec.lang = "en-US"; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+    rec.onresult = (e) => {
+      let interim = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) handleFinal(r[0].transcript); else interim += r[0].transcript;
+      }
+      if (interim) $("#dict-hear").textContent = "Hearing: " + interim.trim() + "…";
+    };
+    rec.onerror = (e) => {
+      if (e.error === "no-speech" || e.error === "aborted") return;
+      const msg = e.error === "not-allowed" || e.error === "service-not-allowed" ? "The microphone is blocked. Click the lock icon in the address bar, allow the microphone, and try again."
+        : e.error === "network" ? "Talk-to-type needs an internet connection." : e.error === "audio-capture" ? "No microphone was found." : "Talk-to-type stopped (" + e.error + ").";
+      stop(); showError(new Error(msg), "Talk-to-type");
+    };
+    rec.onend = () => { if (active) { clearTimeout(restartTimer); restartTimer = setTimeout(() => { if (active) try { rec.start(); } catch (_) {} }, 150); } };
+    try { rec.start(); } catch (_) {}
+  }
+  function start() {
+    active = true; idle.hidden = true; live.hidden = false; wrap.classList.add("on");
+    const list = targets();
+    const firstEmpty = list.find(e => !e.value.trim() && !e.id.startsWith("it-p"));
+    const last = list[list.length - 1];
+    if (firstEmpty) setTarget(firstEmpty);
+    else if (last && last.id.startsWith("it-p") && last.value.trim()) newItem();
+    else setTarget(last);
+    startRec();
+  }
+  function stop() {
+    active = false; clearTimeout(restartTimer);
+    try { rec && rec.stop(); } catch (_) {}
+    live.hidden = true; idle.hidden = false; wrap.classList.remove("on");
+    $$(".dict-target", form).forEach(x => x.classList.remove("dict-target"));
+    // drop an empty item left at the end by "next"
+    const items = $$("#items .item", form);
+    if (items.length > 1) { const lastRow = items[items.length - 1]; if (!$("textarea", lastRow).value.trim() && !$(".price input", lastRow).value.trim()) $("[data-del]", lastRow).click(); }
+    curId = null;
+  }
+  $("#dict-start", wrap).addEventListener("click", start);
+  $("#dict-stop", wrap).addEventListener("click", stop);
+  $("#dict-next", wrap).addEventListener("click", () => { const el = current(); if (el && el.id.startsWith("it-p")) newItem(); else move(1); });
+  $("#dict-amp", wrap).addEventListener("change", (e) => { dictPrefs.amp = e.target.checked; lsSet(DICT_PREFS_KEY, JSON.stringify(dictPrefs)); });
+  form.addEventListener("focusin", (e) => { if (active && e.target.matches("input[type=text], textarea") && e.target.id !== curId && targets().includes(e.target)) setTarget(e.target); });
+  wrap.stop = stop;
+  return wrap;
+}
+const MIC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+
+
+/* ================================================================ handwriting reader (Claude reads the photo) */
+/* In the installed program: Claude through the office's own Anthropic API key, kept only on this
+   computer. In the Claude preview: Claude through the viewer's own Claude account. */
+const READER_MODEL = "claude-sonnet-5-5";
+const KEY_STORE = "mpc-reader-key";
+const readerKey = () => (lsGet(KEY_STORE) || "").trim();
+let sampleP = null;
+const sampleCap = () => {
+  if (!inArtifact) return Promise.resolve(null);
+  if (!sampleP) sampleP = window.claude.use("sample").then(async (s) => { if (!s) return null; const l = await s.limits().catch(() => null); return l && l.images ? s : null; }).catch(() => null);
+  return sampleP;
+};
+async function readerAvailable() { return inArtifact ? !!(await sampleCap()) : !!readerKey(); }
+
+const READER_PROMPT = `You are reading a photo of a handwritten Masterpiece Construction Experts estimate (a window and door company). Type it exactly as written so it can be printed on the company's typed estimate form.
+
+Rules:
+- Type exactly what is written, in the same words and order. Don't reword, fix grammar, add words, or fill in anything that isn't there. Fix only obvious handwriting forms. The looped "ξ" / "&" symbol is "&". Keep the writer's capitalization of brand names (Thermatru, Plygem).
+- Header boxes: name, address, city_state_zip, phone, windows, doors, patio_doors, other, date. Use "" for a box left blank. A checkmark with words written beside or under it (like a check in "Other" with "Trimwork" below) means use the words. A checkmark alone is "✓".
+- total: the handwritten Total at the bottom, digits like "3,201.47" without "$". If words are written instead (like "Choose options"), give the words.
+- items: the description, one entry per item or section, top to bottom. "text" is the item's words with the writer's line breaks joined by single spaces (a sentence that wraps onto the next line is one item). "price" is the item's dollar amount as "1,234.56" without "$", or "" if it has none.
+  - A heading or note with no price (like "Options:", "Customer responsible for…", "Painter referral: …") is its own item with price "".
+  - An option line like "* FC770-ADVS … Paintable or stainable  $4,217.90" is one item: its words in text, the amount in price.
+  - If a section has a breakdown (Materials, Labor, Credit card fee) and a section total, put the breakdown in the text as written with amounts typed like "$1,087.09", and the section total in price.
+  - Keep a leading "*" or "★" as "*".
+- Leave out notes written outside the form's boxes and description area (like "Send specs no pricing" in a top corner); list them in notes_left_out.
+- unsure: list every word or number you could not read with confidence, exactly as you typed it, so the office can check it. Customer names and street names always go here unless they are perfectly clear.
+
+Reply with only this JSON, nothing else:
+{"name":"","address":"","city_state_zip":"","phone":"","windows":"","doors":"","patio_doors":"","other":"","date":"","total":"","items":[{"text":"","price":""}],"unsure":[],"notes_left_out":[]}`;
+
+/* Shrink the photo (or the first page of a PDF scan) to a clear JPEG for reading. */
+async function photoToJpeg(bytes, type) {
+  let canvas;
+  if (/pdf/.test(type)) {
+    if (!window.pdfjsLib) throw new Error("PDF scans can't be read right now. Use a photo instead.");
+    const doc = await pdfjsLib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+    const page = await doc.getPage(1);
+    const vp = page.getViewport({ scale: 2200 / page.getViewport({ scale: 1 }).height });
+    canvas = document.createElement("canvas"); canvas.width = Math.round(vp.width); canvas.height = Math.round(vp.height);
+    const cx = canvas.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, canvas.width, canvas.height);
+    await page.render({ canvasContext: cx, viewport: vp }).promise; doc.destroy();
+  } else {
+    const bmp = await createImageBitmap(new Blob([bytes], { type: type || "image/jpeg" }), { imageOrientation: "from-image" });
+    const s = Math.min(1, 2200 / Math.max(bmp.width, bmp.height));
+    canvas = document.createElement("canvas"); canvas.width = Math.round(bmp.width * s); canvas.height = Math.round(bmp.height * s);
+    const cx = canvas.getContext("2d"); cx.fillStyle = "#fff"; cx.fillRect(0, 0, canvas.width, canvas.height);
+    cx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  }
+  return await new Promise((res) => canvas.toBlob(res, "image/jpeg", 0.88));
+}
+const blobToB64 = (blob) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
+function parseReading(text) {
+  const t = String(text || "");
+  const s = t.indexOf("{"), e = t.lastIndexOf("}");
+  if (s < 0 || e < s) throw new Error("The reader didn't send back a usable answer. Try again.");
+  const j = JSON.parse(t.slice(s, e + 1));
+  const str = (v) => (v === null || v === undefined) ? "" : String(v).trim();
+  const out = blankDetails();
+  for (const k of ["name", "address", "city_state_zip", "phone", "windows", "doors", "patio_doors", "other", "date"]) out[k] = str(j[k]);
+  out.total = str(j.total).replace(/^\$\s*/, "");
+  out.totalAuto = !out.total;
+  const fmt = (v) => { const c = parseMoney(v); return c === null || isNaN(c) ? v : money(c); };
+  out.items = (Array.isArray(j.items) ? j.items : []).map(i => ({ text: str(i && i.text), price: fmt(str(i && i.price).replace(/^\$\s*/, "")) })).filter(i => i.text || i.price);
+  { const c = parseMoney(out.total); if (c !== null && !isNaN(c)) out.total = money(c); }
+  if (!out.items.length) out.items = [{ text: "", price: "" }];
+  if (!out.date) out.date = todayStr();
+  return { det: out, unsure: (j.unsure || []).map(str).filter(Boolean), left: (j.notes_left_out || []).map(str).filter(Boolean) };
+}
+async function callApi(key, body) {
+  let r;
+  try {
+    r = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01", "anthropic-dangerous-direct-browser-access": "true" },
+      body: JSON.stringify(body),
+    });
+  } catch (_) { throw new Error("The handwriting reader needs an internet connection."); }
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = (j.error && j.error.message) || "";
+    if (r.status === 401) throw new Error("The reader key isn't working. Check it in Settings, under Handwriting reader.");
+    if (/credit balance/i.test(msg)) throw new Error("The reader account is out of credit. Add credit in the Anthropic account, then try again.");
+    if (r.status === 429 || r.status === 529) throw new Error("The reader is busy right now. Wait a minute and try again.");
+    throw new Error("The reader couldn't read it (" + r.status + (msg ? ": " + msg : "") + ").");
+  }
+  return (j.content || []).filter(c => c.type === "text").map(c => c.text).join("");
+}
+async function readHandwriting(bytes, type) {
+  const jpeg = await photoToJpeg(bytes, type);
+  if (inArtifact) {
+    const s = await sampleCap();
+    if (!s) throw new Error("Reading handwriting isn't available in this view.");
+    try { const r = await s(READER_PROMPT, { images: [jpeg], modelTier: "default", cache: false }); return parseReading(r.text); }
+    catch (e) {
+      if (e && e.code === "not_granted") throw new Error("Claude wasn't allowed to read the photo. Try again and choose Allow.");
+      if (e && e.code === "rate_limited") throw new Error("Claude is busy or your usage limit was reached. Try again later.");
+      if (e && e.code) throw new Error("Claude couldn't read it (" + e.code + ").");
+      throw e;
+    }
+  }
+  const key = readerKey();
+  if (!key) throw new Error("Add the reader key first, in Settings, under Handwriting reader.");
+  const text = await callApi(key, { model: READER_MODEL, max_tokens: 4000, messages: [{ role: "user", content: [
+    { type: "image", source: { type: "base64", media_type: "image/jpeg", data: await blobToB64(jpeg) } },
+    { type: "text", text: READER_PROMPT }] }] });
+  return parseReading(text);
+}
+async function testReaderKey(key) { await callApi(key, { model: READER_MODEL, max_tokens: 5, messages: [{ role: "user", content: "Reply with OK." }] }); }
+
+
+/* ---------- typing / editing the details */
+async function viewEditor() {
+  const mode = current.mode;                     // "new" | "estimate" | "contract"
+  const job = current.id ? JOBS.find(j => j.id === current.id) : null;
+  let det;
+  if (mode === "new") { try { det = JSON.parse(lsGet("mpc-new-draft") || "null"); } catch (_) {} det = det ? upgradeDetails(det) : blankDetails(); }
+  else if (mode === "estimate") det = upgradeDetails(clone(job.estimate.details));
+  else det = upgradeDetails(clone((job.contract && job.contract.details) || (job.estimate && job.estimate.details)));
+  const canDetails = mode !== "contract" || !!((job.contract && job.contract.details) || (job.estimate && job.estimate.details));
+  let photo = null;
+  const showPhotoCol = mode !== "contract" || (job && job.photo);
+  const head = mode === "new" ? ["Step 1 of 3", "Type the estimate", "Copy what's on the handwritten estimate. Your typing is saved as you go."]
+    : mode === "estimate" ? ["Estimate", "Make changes to the estimate", "Save when you're done and the estimate is rebuilt."]
+    : ["Sales Contract", "Make changes to the sales contract", "Save when you're done and the contract is rebuilt."];
+  view.innerHTML =
+    backBtn(job ? job.name : "All jobs") + stepsBar(job, mode === "contract" ? "contract" : "estimate") +
+    '<div class="form-layout' + (showPhotoCol ? "" : " solo") + '">' +
+      (showPhotoCol ? '<div class="photo-col" id="photo-col"></div>' : "") +
+      '<div class="card">' +
+        '<div class="card-head"><span class="section-title">' + head[0] + '</span><h2>' + head[1] + '</h2><p class="muted">' + head[2] + '</p></div>' +
+        (mode === "contract" ? '<div class="grid2"><div class="field"><label for="c-cust">Customer #</label><input type="text" id="c-cust" inputmode="numeric" autocomplete="off" value="' + esc(job.contract.customer_no) + '"></div>' +
+          '<div class="field"><label for="c-order">Order #</label><input type="text" id="c-order" inputmode="numeric" autocomplete="off" value="' + esc(job.contract.order_no) + '"></div></div>' +
+          (canDetails ? '<label class="check"><input type="checkbox" id="c-more"><span><b>Also change the customer details, work or prices</b><span class="hint">For changes the customer asked for.</span></span></label>' : '<p class="hint">This contract was added as a PDF, so only the numbers can be changed here.</p>') : "") +
+        '<div id="det" style="display:grid;gap:18px"' + (mode === "contract" ? " hidden" : "") + '></div>' +
+        '<div class="save-bar"><div class="row">' +
+          '<button class="btn btn-primary btn-lg" type="button" id="save" data-needs-engine>' + (mode === "new" ? "Create the estimate" : "Save changes") + '</button>' +
+          '<button class="btn btn-secondary" type="button" id="cancel">' + (mode === "new" ? "Start over" : "Cancel") + '</button>' +
+          '<span class="why" id="why"></span><span class="why" data-engine-why></span></div></div>' +
+      '</div></div>';
+  if (job) wireSteps(job);
+  $("#back").addEventListener("click", () => job ? openJob(job.id, mode === "contract" ? "contract" : "estimate") : go("home"));
+  const why = () => {
+    let w = "";
+    if (mode !== "contract" || ($("#c-more") && $("#c-more").checked)) { if (!String(det.name || "").trim()) w = "Add the customer's name."; else if (!detailsReady(det)) w = "Add at least one item."; }
+    if (mode === "contract" && (!$("#c-cust").value.trim() || !$("#c-order").value.trim())) w = "Add the Customer # and Order #.";
+    $("#why").textContent = w; $("#save").dataset.blocked = w ? "1" : "0"; refreshReadyBits();
+  };
+  const drawDetails = () => {
+    if (activeDict && activeDict.stop) activeDict.stop();
+    $("#det").innerHTML = "";
+    detailsForm($("#det"), det, () => { if (mode === "new") lsSet("mpc-new-draft", JSON.stringify(det)); why(); });
+    activeDict = setupDictation($("#det"));
+    $("#det").prepend(activeDict);
+  };
+  drawDetails();
+  if (mode === "contract") {
+    ["#c-cust", "#c-order"].forEach(s => $(s).addEventListener("input", why));
+    if ($("#c-more")) $("#c-more").addEventListener("change", () => { $("#det").hidden = !$("#c-more").checked; why(); });
+  }
+  const pc = $("#photo-col");
+  if (pc) {
+    const showPhoto = async (bytes, type, name) => {
+      const holder = $("#photo-view"); holder.hidden = false; holder.innerHTML = "";
+      if (/pdf/.test(type) || /\.pdf$/i.test(name)) return renderPdf(bytes, holder);
+      const img = document.createElement("img"); img.alt = "The handwritten estimate"; img.src = URL.createObjectURL(new Blob([bytes], { type }));
+      holder.appendChild(img);
+    };
+    let shown = null;                              // the photo on screen: { bytes, type }
+    const canRead = mode !== "contract" && await readerAvailable();
+    pc.innerHTML = '<div class="photo" id="photo-view" hidden></div>' +
+      (canRead ? '<div class="reader" id="reader" hidden><button class="btn btn-primary" type="button" id="read-btn">Read the handwriting</button>' +
+        '<span class="hint">Fills in the form from the photo. Check it against the photo before saving.</span><div id="read-msg" aria-live="polite"></div></div>' : "") +
+      '<label class="drop"><input type="file" id="photo-in" accept="image/*,application/pdf"><b id="photo-label">' + (job && job.photo ? "Replace the photo" : "Add a photo of the handwritten estimate") + '</b><span class="hint">' +
+      (canRead ? "Then tap Read the handwriting, or type it yourself." : "Optional. It stays here to look at while you type.") + '</span></label>';
+    const showReader = () => { if ($("#reader")) $("#reader").hidden = !shown; };
+    $("#photo-in").addEventListener("change", async (e) => {
+      const f = e.target.files[0]; if (!f) return;
+      photo = { name: f.name, type: f.type || (isPdf(f) ? "application/pdf" : "image/jpeg"), bytes: new Uint8Array(await f.arrayBuffer()) };
+      shown = { bytes: photo.bytes, type: photo.type };
+      $("#photo-label").textContent = "Replace the photo";
+      if ($("#read-msg")) $("#read-msg").innerHTML = "";
+      showPhoto(photo.bytes, photo.type, photo.name); showReader();
+    });
+    if (job && job.photo) {
+      const b = await readBytes(await dirAt(job.folder), job.photo);
+      if (b) { const t = /\.pdf$/i.test(job.photo) ? "application/pdf" : (/\.png$/i.test(job.photo) ? "image/png" : "image/jpeg"); shown = { bytes: b, type: t }; showPhoto(b, t, job.photo); showReader(); }
+    }
+    if (canRead) $("#read-btn").addEventListener("click", async () => {
+      if (!shown) return;
+      const typed = HEAD_KEYS.some(k => k !== "date" && String(det[k] || "").trim()) || det.items.some(i => String(i.text || "").trim() || String(i.price || "").trim());
+      if (typed) {
+        const v = await ask({ title: "Replace what's typed?", text: "Reading the handwriting replaces everything in the form with what's on the photo.", buttons: [{ label: "Keep what's typed", value: false }, { label: "Replace it", value: true, kind: "btn-primary" }] });
+        if (!v) return;
+      }
+      const btn = $("#read-btn"); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Reading…';
+      $("#read-msg").innerHTML = "";
+      try {
+        const r = await readHandwriting(shown.bytes, shown.type);
+        for (const k of Object.keys(det)) delete det[k];
+        Object.assign(det, r.det);
+        if (mode === "new") lsSet("mpc-new-draft", JSON.stringify(det));
+        drawDetails(); why();
+        let m = '<div class="note ok">Filled in. Check each box against the photo.</div>';
+        if (r.unsure.length) m += '<div class="note warn"><b>Double-check:</b> ' + r.unsure.map(u => "“" + esc(u) + "”").join(", ") + '</div>';
+        if (r.left.length) m += '<p class="hint">Left off (written outside the form): ' + r.left.map(esc).join("; ") + '</p>';
+        $("#read-msg").innerHTML = m;
+      } catch (e) {
+        $("#read-msg").innerHTML = '<div class="note warn">' + esc((e && e.message) || "The handwriting couldn't be read.") + '</div>';
+      } finally { btn.disabled = false; btn.textContent = "Read the handwriting"; }
+    });
+  }
+  $("#cancel").addEventListener("click", async () => {
+    if (mode !== "new") return openJob(job.id, mode === "contract" ? "contract" : "estimate");
+    const v = await ask({ title: "Start over?", text: "This clears everything typed so far.", buttons: [{ label: "Keep typing", value: false }, { label: "Clear it", value: true, kind: "btn-primary" }] });
+    if (v) { lsSet("mpc-new-draft", null); go("editor", { mode: "new" }); }
+  });
+  $("#save").addEventListener("click", () => { if (activeDict && activeDict.stop) activeDict.stop(); saveEditor(mode, job, det, photo); });
+  why();
+  if (mode === "new" && !det.name) { const n = $("#d-name"); if (n) n.focus(); }
+}
+async function savePhoto(job, photo) {
+  if (!photo) return;
+  const ext = (photo.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0].toLowerCase();
+  const name = "Handwritten estimate" + ext;
+  const d = await dirAt(job.folder);
+  if (job.photo && job.photo !== name) { try { await d.removeEntry(job.photo); } catch (_) {} }
+  await writeBytes(d, name, photo.bytes); job.photo = name;
+}
+async function saveEditor(mode, job, det, photo) {
+  try {
+    if (mode === "new") {
+      busy("Creating the estimate…");
+      const r = await buildEstimate(det);
+      busyText("Saving…");
+      const j = await createJob(det.name.trim());
+      setPeople(j, det);
+      await saveDoc(j, "estimate", r.name, r.bytes);
+      j.estimate = { source: "typed", details: clone(det), file: r.name, made: nowIso(), total: r.rep.total, date: r.rep.date, warnings: r.rep.warnings || [] };
+      await savePhoto(j, photo);
+      await saveJob(j);
+      lsSet("mpc-new-draft", null);
+      unbusy(); return openJob(j.id, "estimate");
+    }
+    if (mode === "estimate") {
+      busy("Saving the estimate…");
+      const r = await buildEstimate(det);
+      await saveDoc(job, "estimate", r.name, r.bytes);
+      Object.assign(job.estimate, { details: clone(det), file: r.name, made: nowIso(), total: r.rep.total, date: r.rep.date, warnings: r.rep.warnings || [] });
+      setPeople(job, det);
+      await savePhoto(job, photo);
+      await saveJob(job);
+      unbusy();
+      if (job.contract && !job.contract.details && job.estimate.source === "typed") {
+        const more = job.invoice ? "the sales contract and final invoice" : "the sales contract";
+        const v = await ask({ title: "Update " + more + " too?", text: "They still show the old estimate. Update them if the customer should see these changes.",
+          buttons: [{ label: "No, just the estimate", value: false }, { label: "Yes, update " + (job.invoice ? "both" : "it"), value: true, kind: "btn-primary" }] });
+        if (v) {
+          busy("Updating the sales contract…");
+          await makeContract(job, job.contract.customer_no, job.contract.order_no);
+          if (job.invoice) { busyText("Updating the final invoice…"); await makeInvoice(job, invoiceOpts(job.invoice)); }
+          await saveJob(job); unbusy();
+        }
+      }
+      return openJob(job.id, "estimate");
+    }
+    if (mode === "contract") {
+      const cust = $("#c-cust").value.trim(), order = $("#c-order").value.trim();
+      const changeDetails = $("#c-more") && $("#c-more").checked;
+      if (!job.estimate) return showError(new Error("This contract was added as a PDF without its estimate, so it can't be rebuilt here."));
+      if (changeDetails) {
+        const estDet = job.estimate.details;
+        const base = job.contract.details || estDet;
+        if (!sameDetails(det, base)) {
+          let alsoEstimate = false;
+          if (estDet) {
+            alsoEstimate = await ask({ title: "Change the estimate too?", text: "The customer already has the estimate. You can change just the sales contract, or update the estimate to match.",
+              buttons: [{ label: "Update the estimate too", value: true }, { label: "Just the contract", value: false, kind: "btn-primary" }] });
+            if (alsoEstimate === null) return;
+          }
+          if (alsoEstimate) {
+            busy("Updating the estimate…");
+            const r = await buildEstimate(det);
+            await saveDoc(job, "estimate", r.name, r.bytes);
+            Object.assign(job.estimate, { details: clone(det), file: r.name, made: nowIso(), total: r.rep.total, date: r.rep.date });
+            job.contract.details = null;
+          } else job.contract.details = clone(det);
+          setPeople(job, det);
+        }
+      }
+      busy("Saving the sales contract…");
+      await makeContract(job, cust, order);
+      await savePhoto(job, photo);
+      await saveJob(job); unbusy();
+      if (job.invoice) {
+        const v = await ask({ title: "Update the final invoice too?", text: "It still shows the old sales contract.", buttons: [{ label: "No, leave it", value: false }, { label: "Yes, update it", value: true, kind: "btn-primary" }] });
+        if (v) { busy("Updating the final invoice…"); await makeInvoice(job, invoiceOpts(job.invoice)); await saveJob(job); unbusy(); }
+      }
+      return openJob(job.id, "contract");
+    }
+  } catch (e) { showError(e); }
+}
+const invoiceOpts = (i) => ({ pay: i.pay || "deposit", received: i.received || "", due: i.due || "", no_gaps: !!i.no_gaps, gap_before: i.gap_before || "" });
+
+/* ---------- one job, one step at a time */
+const fact = (k, v, cls) => v ? '<div' + (cls ? ' class="' + cls + '"' : "") + '><dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd></div>' : "";
+const $amt = (v) => v ? (/\d/.test(v) ? "$" + v : v) : "";
+async function viewJob() {
+  const job = JOBS.find(j => j.id === current.id); if (!job) return go("home");
+  const tab = current.tab || nextStep(job);
+  view.innerHTML = backBtn("All jobs") +
+    '<div class="job-title"><h2>' + esc(job.name) + '</h2><p class="muted">' + esc([job.address, job.city, job.phone].filter(Boolean).join(" · ")) + '</p></div>' +
+    stepsBar(job, tab) + '<div class="work" id="work"></div>';
+  $("#back").addEventListener("click", () => go("home"));
+  wireSteps(job);
+  const work = $("#work");
+  const d = job[tab];
+  if (tab === "estimate" && !d) {
+    work.innerHTML = '<div class="card panel"><p>This job started from a sales contract, so there\'s no estimate.</p><button class="btn btn-primary btn-block" type="button" id="goc">Go to the sales contract</button></div><div></div>';
+    $("#goc").addEventListener("click", () => go("job", { id: job.id, tab: "contract" }));
+    return;
+  }
+  if (tab === "contract" && !d) return drawMakeContract(job, work);
+  if (tab === "invoice" && (!d || current.edit)) return drawMakeInvoice(job, work, !!d);
+  const bytes = await readBytes(await dirAt(job.folder), d.file);
+  const older = await olderVersions(job, tab);
+  const titles = { estimate: "Estimate", contract: "Sales Contract", invoice: "Final Invoice" };
+  let facts = "";
+  if (tab === "estimate") facts = fact("Date", d.date) + fact("Total", $amt(d.total), "total");
+  if (tab === "contract") facts = fact("Customer #", d.customer_no) + fact("Order #", d.order_no) + fact("Total", $amt(d.total)) + fact("Deposit", $amt(d.deposit)) + fact("Final Due", $amt(d.final_due), "total");
+  if (tab === "invoice") facts = fact("Contract Amount", $amt(d.contract_amount)) + fact(d.received_label || "Deposit Received", $amt(d.received_amount)) + fact("Balance Due", $amt(d.balance_due), "total");
+  const canEdit = tab === "estimate" ? d.source === "typed" : tab === "contract" ? !!job.estimate : true;
+  const note = tab === "estimate" && d.source !== "typed" ? "Added as a PDF, so it can't be changed here."
+    : tab === "contract" && !job.estimate ? "Added as a PDF, so it can't be changed here."
+    : tab === "contract" && d.details ? "This contract has changes that aren't on the estimate." : "";
+  let primary;
+  if (tab === "estimate") primary = job.contract ? ["Go to the sales contract", "contract"] : ["Next: make the sales contract", "contract"];
+  else if (tab === "contract") primary = job.invoice ? ["Go to the final invoice", "invoice"] : ["Next: make the final invoice", "invoice"];
+  else primary = ["Back to all jobs", "home"];
+  work.innerHTML =
+    '<div class="card panel">' +
+      '<div class="card-head"><span class="done-badge">' + CHECK + ' ' + titles[tab] + ' saved</span><h3 style="overflow-wrap:anywhere">' + esc(d.file) + '</h3><p class="hint">' + esc(niceDateTime(d.made)) + '</p></div>' +
+      (facts ? '<dl class="facts">' + facts + '</dl>' : "") +
+      (d.warnings || []).filter(w => !/to fit the contract's line spacing/.test(w)).map(w => '<div class="note warn"><b>Please check</b><span>' + esc(w) + '</span></div>').join("") +
+      (tab === "invoice" ? '<div class="note ok">All three documents are done and saved in the job\'s folder.</div>' : "") +
+      '<button class="btn btn-primary btn-lg btn-block" type="button" id="primary">' + esc(primary[0]) + (primary[1] !== "home" ? " " + ARROW : "") + '</button>' +
+      '<div class="row">' +
+        '<button class="btn btn-secondary" type="button" id="dl"' + (bytes ? "" : " disabled") + '>Download PDF</button>' +
+        (canEdit ? '<button class="btn btn-secondary" type="button" id="edit">Make changes</button>' : "") + '</div>' +
+      (note ? '<p class="hint">' + esc(note) + '</p>' : "") +
+      (bytes ? "" : '<div class="note bad">The PDF is missing from the job\'s folder.</div>') +
+      (older.length ? '<details class="older"><summary>Earlier versions (' + older.length + ')</summary><ul>' + older.map((n, i) => '<li><span>' + esc(n) + '</span><button class="btn btn-text" type="button" data-old="' + i + '">Open</button></li>').join("") + '</ul></details>' : "") +
+    '</div>' +
+    '<div class="paper" id="prev"></div>';
+  $("#primary").addEventListener("click", () => primary[1] === "home" ? go("home") : go("job", { id: job.id, tab: primary[1] }));
+  if (bytes) { $("#dl").addEventListener("click", () => offerFile(d.file, bytes)); renderPdf(bytes, $("#prev")); }
+  if ($("#edit")) $("#edit").addEventListener("click", () => tab === "invoice" ? go("job", { id: job.id, tab: "invoice", edit: true }) : go("editor", { mode: tab, id: job.id }));
+  $$("[data-old]").forEach(b => b.addEventListener("click", async () => {
+    const n = older[+b.dataset.old];
+    const ob = await readBytes(await (await dirAt(job.folder)).getDirectoryHandle(OLDER), n);
+    if (ob) openPdf(ob, n);
+  }));
+}
+const PLACEHOLDER = (t) => '<div class="placeholder"><div><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/></svg><p class="small" style="margin-top:8px">' + esc(t) + '</p></div></div>';
+function drawMakeContract(job, work) {
+  work.innerHTML = '<div class="card panel"><div class="card-head"><span class="section-title">Step 2 of 3</span><h2>Make the sales contract</h2><p class="muted">Type the Customer # and Order # exactly as given, including any zeros at the start.</p></div>' +
+    '<div class="field"><label for="m-cust">Customer #</label><input type="text" id="m-cust" inputmode="numeric" autocomplete="off" spellcheck="false" ></div>' +
+    '<div class="field"><label for="m-order">Order #</label><input type="text" id="m-order" inputmode="numeric" autocomplete="off" spellcheck="false" ></div>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="make" data-needs-engine data-blocked="1">Make the sales contract</button>' +
+    '<p class="why" data-engine-why></p></div>' + PLACEHOLDER("The sales contract will show here.");
+  const why = () => { const ok = $("#m-cust").value.trim() && $("#m-order").value.trim(); $("#make").dataset.blocked = ok ? "0" : "1"; refreshReadyBits(); };
+  ["#m-cust", "#m-order"].forEach(s => $(s).addEventListener("input", why));
+  $("#m-order").addEventListener("keydown", (e) => { if (e.key === "Enter" && !$("#make").disabled) $("#make").click(); });
+  $("#make").addEventListener("click", async () => {
+    try {
+      busy("Making the sales contract…");
+      await makeContract(job, $("#m-cust").value.trim(), $("#m-order").value.trim());
+      await saveJob(job); unbusy(); openJob(job.id, "contract");
+    } catch (e) { showError(e); }
+  });
+  refreshReadyBits(); $("#m-cust").focus();
+}
+const MONEY_RE = /^\$?\s*\d{1,3}(,?\d{3})*\.\d\d$/;
+function drawMakeInvoice(job, work, editing) {
+  if (!job.contract) { work.innerHTML = '<div class="card panel"><p>Make the sales contract first.</p><button class="btn btn-primary btn-block" type="button" id="tocon">Go to the sales contract</button></div><div></div>'; $("#tocon").addEventListener("click", () => go("job", { id: job.id, tab: "contract" })); return; }
+  const o = invoiceOpts(job.invoice || {});
+  const special = o.pay === "money" || o.no_gaps;
+  work.innerHTML = '<div class="card panel"><div class="card-head"><span class="section-title">' + (editing ? "Final Invoice" : "Step 3 of 3") + '</span><h2>' + (editing ? "Make changes to the final invoice" : "Make the final invoice") + '</h2><p class="muted">The Customer #, Order # and amounts come from the sales contract.</p></div>' +
+    (job.contract.total ? '<dl class="facts">' + fact("Contract total", $amt(job.contract.total)) + fact("Deposit", $amt(job.contract.deposit)) + fact("Balance due", $amt(job.contract.final_due), "total") + '</dl>' : "") +
+    '<details class="more"' + (special ? " open" : "") + '><summary>More options</summary><div>' +
+      '<div class="opt"><label class="check"><input type="checkbox" id="pay-money"' + (o.pay === "money" ? " checked" : "") + '><span><b>Part of the job was already paid</b><span class="hint">Shows "Money Received" instead of "Deposit Received", with amounts you type.</span></span></label>' +
+        '<div class="grid2" id="money-f"' + (o.pay === "money" ? "" : " hidden") + '><div class="field"><label for="i-rec">Money received</label><div class="money-in"><input type="text" id="i-rec" inputmode="decimal" autocomplete="off" placeholder="12,266.19" value="' + esc(o.received) + '"></div></div>' +
+        '<div class="field"><label for="i-due">Amount due</label><div class="money-in"><input type="text" id="i-due" inputmode="decimal" autocomplete="off" placeholder="3,892.09" value="' + esc(o.due) + '"></div></div></div></div>' +
+      '<div class="opt"><label class="check"><input type="checkbox" id="i-gaps"' + (o.no_gaps ? " checked" : "") + '><span><b>Remove the blank lines between items</b><span class="hint">Use this if the description is too long to fit.</span></span></label>' +
+        '<div class="field" id="gap-f"' + (o.no_gaps ? "" : " hidden") + '><label for="i-gapb">Keep a blank line before lines (optional)</label><input type="text" id="i-gapb" autocomplete="off" placeholder="4, 13" value="' + esc(o.gap_before) + '"><span class="hint">Lines of text are counted 1, 2, 3… from the top, not counting blank lines.</span></div></div>' +
+    '</div></details>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="make" data-needs-engine>' + (editing ? "Save changes" : "Make the final invoice") + '</button>' +
+    (editing ? '<button class="btn btn-secondary btn-block" type="button" id="cancel">Cancel</button>' : "") +
+    '<p class="why" id="why"></p><p class="why" data-engine-why></p></div>' + PLACEHOLDER(editing ? "The updated invoice will show here." : "The final invoice will show here.");
+  const read = () => ({ pay: $("#pay-money").checked ? "money" : "deposit", received: $("#i-rec").value.trim().replace(/^\$\s*/, ""), due: $("#i-due").value.trim().replace(/^\$\s*/, ""), no_gaps: $("#i-gaps").checked, gap_before: $("#i-gapb").value.trim() });
+  const why = () => {
+    const v = read(); let w = "";
+    if (v.pay === "money" && (!MONEY_RE.test(v.received) || !MONEY_RE.test(v.due))) w = "Type the money received and amount due like 1,234.56.";
+    else if (v.no_gaps && v.gap_before && !/^\s*\d+(\s*,\s*\d+)*\s*$/.test(v.gap_before)) w = "List line numbers with commas, like 4, 13.";
+    $("#why").textContent = w; $("#make").dataset.blocked = w ? "1" : "0"; refreshReadyBits();
+  };
+  $("#pay-money").addEventListener("change", () => { $("#money-f").hidden = !$("#pay-money").checked; why(); });
+  $("#i-gaps").addEventListener("change", () => { $("#gap-f").hidden = !$("#i-gaps").checked; why(); });
+  ["#i-rec", "#i-due", "#i-gapb"].forEach(s => $(s).addEventListener("input", why));
+  if ($("#cancel")) $("#cancel").addEventListener("click", () => go("job", { id: job.id, tab: "invoice" }));
+  $("#make").addEventListener("click", async () => {
+    try {
+      busy(editing ? "Saving the final invoice…" : "Making the final invoice…");
+      await makeInvoice(job, read()); await saveJob(job); unbusy();
+      go("job", { id: job.id, tab: "invoice" });
+    } catch (e) { showError(e); }
+  });
+  why();
+}
+
+/* ---------- settings */
+async function viewSettings() {
+  const rows = [];
+  for (const k of ["estimate", "contract", "invoice"]) {
+    let info = null; try { info = await fileInfo(await Store.root.getDirectoryHandle(FORMS_DIR), FORM_INFO[k].file); } catch (_) {}
+    rows.push('<div class="form-row"><div><b>' + esc(FORM_INFO[k].title) + '</b><p class="hint">' + (info ? "Added " + esc(niceDate(new Date(info.lastModified).toISOString())) : "Not added yet") + '</p></div>' +
+      '<div class="row"><button class="btn btn-secondary" type="button" data-rep="' + k + '">' + (info ? "Replace" : "Add") + '</button></div></div>');
+  }
+  view.innerHTML = backBtn("All jobs") + '<h2>Settings</h2>' +
+    '<div class="card"><div class="card-head"><h3>Where files are saved</h3>' +
+    (Store.mode === "folder" ? '<p class="muted">In the <b>' + esc(Store.root.name) + '</b> folder. Each job has its own folder inside it, by year and month.</p>' : '<p class="muted">In this browser only (preview). Use Chrome or Edge on a computer to save to a real folder.</p>') + '</div>' +
+    (Store.canFolder ? '<div><button class="btn btn-secondary" type="button" id="change">Use a different folder</button></div><p class="hint">Jobs already saved stay where they are.</p>' : "") + '</div>' +
+    '<div class="card"><div class="card-head"><h3>Blank forms</h3><p class="muted">The empty forms the documents are typed onto. Replace one when the company updates it. Documents already made don\'t change.</p></div><div class="settings-list">' + rows.join("") + '</div><div id="form-msg"></div></div>' +
+    '<div class="card"><div class="card-head"><h3>Handwriting reader</h3>' +
+    (inArtifact ? '<p class="muted">In this preview, Read the handwriting uses your own Claude account. In the installed program it uses the reader key added here.</p></div>'
+      : '<p class="muted">Lets <b>Read the handwriting</b> fill in a new estimate from the photo. The key is kept only on this computer.</p></div>' +
+        (readerKey() ? '<div class="key-row"><span class="note ok" style="flex:1 1 280px">A reader key is added (ends in …' + esc(readerKey().slice(-4)) + ').</span><button class="btn btn-secondary" type="button" id="key-test">Test it</button><button class="btn btn-secondary" type="button" id="key-del">Remove</button></div>'
+          : '<div class="key-row"><input type="password" id="key-in" autocomplete="off" spellcheck="false" placeholder="Paste the key (starts with sk-ant-)" aria-label="Reader key"><button class="btn btn-primary" type="button" id="key-save">Save</button></div>') +
+        '<div id="key-msg" aria-live="polite"></div>') + '</div>';
+  $("#back").addEventListener("click", () => go("home"));
+  if ($("#change")) $("#change").addEventListener("click", async () => {
+    try { await chooseFolder(); } catch (e) { if (e && e.name === "AbortError") return; return showError(e); }
+    await enterApp();
+  });
+  $$("[data-rep]").forEach(b => b.addEventListener("click", async () => {
+    const k = b.dataset.rep, info = FORM_INFO[k];
+    const f = await pickFile("application/pdf,.pdf"); if (!f) return;
+    try { await saveForm(k, f); } catch (e) { return showError(e); }
+    await viewSettings();
+    $("#form-msg").innerHTML = '<div class="note ok">Saved. New ' + esc(info.title) + ' documents will use ' + esc(f.name) + '.</div>';
+  }));
+  const keyMsg = (cls, t) => { $("#key-msg").innerHTML = '<div class="note ' + cls + '" style="margin-top:12px">' + esc(t) + '</div>'; };
+  const tryKey = async (key, btn) => {
+    const label = btn.textContent; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>Checking…';
+    try { await testReaderKey(key); return true; } catch (e) { keyMsg("warn", e.message); return false; }
+    finally { btn.disabled = false; btn.textContent = label; }
+  };
+  if ($("#key-save")) $("#key-save").addEventListener("click", async () => {
+    const key = $("#key-in").value.trim();
+    if (!/^sk-ant-/.test(key)) return keyMsg("warn", "That doesn't look like a reader key. It starts with sk-ant-.");
+    if (!await tryKey(key, $("#key-save"))) return;
+    lsSet(KEY_STORE, key); await viewSettings(); keyMsg("ok", "Saved and working. Read the handwriting is ready on new estimates.");
+  });
+  if ($("#key-test")) $("#key-test").addEventListener("click", async () => { if (await tryKey(readerKey(), $("#key-test"))) keyMsg("ok", "The reader key works."); });
+  if ($("#key-del")) $("#key-del").addEventListener("click", async () => {
+    const v = await ask({ title: "Remove the reader key?", text: "Read the handwriting stops working on this computer until a key is added again.", buttons: [{ label: "Keep it", value: false }, { label: "Remove", value: true, kind: "btn-primary" }] });
+    if (v) { lsSet(KEY_STORE, null); await viewSettings(); }
+  });
+
+}
+
+/* ================================================================ start */
+(async () => {
+  startEngine();
+  /* Setup link: ...#key=sk-ant-... saves the reader key on this computer, then the key is wiped from the address bar.
+     (The part after # never leaves the computer, so the key isn't sent to the website.) */
+  if (!inArtifact) {
+    const m = /(?:^#|&)key=(sk-ant-[A-Za-z0-9_\-]+)/.exec(location.hash || "");
+    if (m) { lsSet(KEY_STORE, m[1]); try { history.replaceState(null, "", location.pathname + location.search); } catch (_) {} }
+  }
+  if ("serviceWorker" in navigator && !inArtifact && window.top === window && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  }
+  view.innerHTML = '<div class="narrow"><div class="busy" style="justify-content:center"><span class="spin"></span>Opening…</div></div>';
+  let st = "setup";
+  try { st = await initStore(); } catch (_) {}
+  if (st === "ready") await enterApp();
+  else go(st);
+})();
+})();
+
+</script>
+</body></html>

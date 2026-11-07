@@ -1,0 +1,125 @@
+# Masterpiece paperwork engine glue (runs inside Pyodide in the browser).
+# Runs the unchanged company scripts as if from the command line and
+# returns what they printed.
+import sys, types, io, os, runpy, contextlib, json
+
+# pdfminer imports `cryptography` (a compiled library) only to open password-
+# protected PDFs. Company forms aren't encrypted, so a stand-in is enough.
+def _stub(name):
+    m = types.ModuleType(name)
+    sys.modules[name] = m
+    return m
+
+class _NoCrypto:
+    def __init__(self, *a, **k):
+        raise RuntimeError("Password-protected PDFs aren't supported.")
+    def __getattr__(self, k):
+        raise RuntimeError("Password-protected PDFs aren't supported.")
+
+for _n in ("cryptography", "cryptography.hazmat", "cryptography.hazmat.backends",
+           "cryptography.hazmat.primitives", "cryptography.hazmat.primitives.ciphers"):
+    _stub(_n)
+sys.modules["cryptography.hazmat.backends"].default_backend = lambda: None
+_c = sys.modules["cryptography.hazmat.primitives.ciphers"]
+_c.Cipher = _NoCrypto
+_c.algorithms = types.SimpleNamespace()
+_c.modes = types.SimpleNamespace()
+
+# reportlab imports Pillow at load time but only uses it for pictures. The
+# scripts only draw text, so an empty stand-in is enough.
+_pil = _stub("PIL"); _pil.__path__ = []; _pil.__version__ = "none"
+_img = _stub("PIL.Image")
+class _NoImage:
+    def __init__(self, *a, **k):
+        raise RuntimeError("Pictures aren't supported here.")
+_img.Image = _NoImage
+_img.open = _NoImage
+_pil.Image = _img
+
+SCRIPTS = "/mpc/scripts"
+
+def run(script, argv):
+    """Run SCRIPTS/script with argv; return JSON {code, stdout, stderr}."""
+    path = os.path.join(SCRIPTS, script)
+    out, err = io.StringIO(), io.StringIO()
+    old_argv = sys.argv
+    sys.argv = [path] + list(argv)
+    code = 0
+    try:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                runpy.run_path(path, run_name="__main__")
+            except SystemExit as e:
+                code = e.code if isinstance(e.code, int) else (0 if e.code is None else 1)
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
+                code = 1
+    finally:
+        sys.argv = old_argv
+    return json.dumps({"code": code, "stdout": out.getvalue(), "stderr": err.getvalue()})
+
+
+# ---------------------------------------------------------------------------
+# Read the filled-in header of an estimate or sales contract PDF, so a job can
+# be started from a PDF that was made outside the program. Uses the company
+# scripts' own helpers for finding labels and entry lines.
+_LEFT = [("name", "Name:"), ("address", "Address:"), ("city_state_zip", "City/State/Zip:"), ("phone", "Phone:")]
+_RIGHT = [("windows", "Window(s):"), ("doors", "Door(s):"), ("patio_doors", "Patio Door(s):"), ("other", "Other:")]
+
+def read_header(path):
+    if SCRIPTS not in sys.path:
+        sys.path.insert(0, SCRIPTS)
+    import re as _re
+    import pdfplumber
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        import build_contract as bc
+        import build_invoice as bi
+    out = {"kind": "", "fields": {}, "date": "", "total": "", "customer_no": "", "order_no": ""}
+    try:
+        with pdfplumber.open(path) as pdf:
+            P = pdf.pages[0]
+            ws = bc.words(P)
+            fc = bc.fill_chars(P)
+            head = " ".join(w["text"] for w in ws if w["top"] < 80 and w["x0"] > P.width * 0.55)
+            if "Sales" in head and "Contract" in head:
+                out["kind"] = "contract"
+            elif "Invoice" in head:
+                out["kind"] = "invoice"
+            elif "Estimate" in head:
+                out["kind"] = "estimate"
+            for col in (_LEFT, _RIGHT):
+                prev = None
+                for key, lab in col:
+                    try:
+                        r = bc.field_rule(P, bc.find_label(ws, lab))
+                        top = r["top"] - 16 if prev is None else max(r["top"] - 16, prev + 1.5)
+                        out["fields"][key] = bc.text_in(fc, r["x0"] - 2, top, r["x1"] + 2, r["top"] + 1.5)
+                        prev = r["top"]
+                    except Exception:
+                        out["fields"][key] = ""
+            try:
+                r = bc.field_rule(P, bc.find_label(ws, "Date:"))
+                out["date"] = bc.text_in(fc, r["x0"] - 2, r["top"] - 20, r["x1"] + 2, r["top"] + 1.5)
+            except Exception:
+                pass
+            try:
+                lab = [w for w in ws if w["text"] in ("Total:", "Total") and w["top"] > P.height * 0.5]
+                lab = sorted(lab, key=lambda w: w["top"])[0]
+                t = bc.text_in([c for c in fc if abs(c["top"] - lab["top"]) < 7 and c["x0"] > lab["x1"]], -1, -1, 9999, 9999)
+                m = _re.search(r"[\d,]+\.\d\d", t)
+                out["total"] = m.group(0) if m else ""
+            except Exception:
+                pass
+            if out["kind"] in ("contract", "invoice"):
+                for key, lab in (("customer_no", "Customer #"), ("order_no", "Order #")):
+                    try:
+                        l = bi.find_label(ws, lab)
+                        d = bi.cell_divider(P, l, "form")
+                        ch = [c for c in fc if c["x0"] > d - 1 and c["x1"] < d + 120 and l["top"] - 4 < c["top"] < l["bottom"] + 1]
+                        out[key] = bi.text_of(ch)
+                    except Exception:
+                        pass
+    except Exception as e:
+        out["error"] = str(e)
+    return json.dumps(out)

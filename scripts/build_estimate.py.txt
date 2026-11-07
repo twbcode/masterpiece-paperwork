@@ -1,0 +1,342 @@
+#!/usr/bin/env python3
+"""
+Masterpiece typed estimate - step 2: type the transcription onto the blank template.
+
+Usage:
+  python3 build_estimate.py ESTIMATE_TEMPLATE.pdf TRANSCRIPTION.json OUTPUT_DIR
+
+TRANSCRIPTION.json (written by Claude after reading the handwritten estimate):
+{
+  "name": "Gary & Marnie Dodson",
+  "address": "8073, 8120 Roe St.",
+  "city_state_zip": "Boise ID 83714",
+  "phone": "775-304-3814",
+  "windows": "", "doors": "", "patio_doors": "", "other": "Decks",
+  "date": "10-27-26",
+  "total": "9,723.97",
+  "description": [
+    {"line": 1, "items": [{"at": 0, "text": "*Roe 8073"}]},
+    {"line": 6, "items": [{"at": 31, "text": "Materials $1,087.09"},
+                          {"at": 77, "text": "$3,201.31", "underline": true}]}
+  ]
+}
+"line" is the ruled description line the writing is on in the photo
+(1 = first line under "Description:"). Add "continues": true to a line whose
+writing only wrapped there because the writer ran out of room; it is joined to
+the line above and everything below moves up. Blank lines are kept.
+"at" is where that piece of writing starts, from 0 (left end of the line) to
+100 (right end), as measured on the photo. Optional "underline": true
+underlines the piece. Lines that aren't listed stay blank.
+
+The script never lets text run past the description box or onto another piece
+of text: pieces that would collide are nudged apart, and a line that is too long
+is set slightly smaller (down to 10 pt). If it still can't fit, the script stops
+and says which line to split. Customer # and Order # are never filled in.
+Output: "<Customer Last Name> Estimate.pdf" in OUTPUT_DIR.
+"""
+import sys, os, re, json, glob, subprocess
+
+def need(mod, pkg=None):
+    try:
+        return __import__(mod)
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", pkg or mod], check=False)
+        return __import__(mod)
+
+need("pypdf"); need("pdfplumber"); need("reportlab")
+import io
+import pdfplumber
+from pypdf import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+class Stop(Exception):
+    pass
+
+CLEAR = 0.2          # text sits at least 0.2 x font size above its line
+DESC_SIZE = 12.0     # description text size (same as the company's typed estimates)
+DESC_MIN = 10.0      # smallest size a crowded line may shrink to
+FIELD_SIZE = 11.0
+BIG_SIZE = 14.0      # date and total
+
+# ------------------------------------------------------------------ font
+def pick_font():
+    """DejaVu Sans Condensed (free); bundled with the skill or found on the system.
+    Fallback: DejaVu Sans squeezed to 90% width, which looks almost the same."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands = [os.path.join(here, "..", "assets", "DejaVuSansCondensed.ttf"),
+             os.path.join(here, "DejaVuSansCondensed.ttf")]
+    cands += glob.glob("/usr/share/fonts/**/DejaVuSansCondensed.ttf", recursive=True)
+    for p in cands:
+        if os.path.exists(p):
+            pdfmetrics.registerFont(TTFont("MPC", p)); return "MPC", 100, "DejaVu Sans Condensed"
+    cands = glob.glob("/usr/share/fonts/**/DejaVuSans.ttf", recursive=True)
+    try:
+        import matplotlib
+        cands.append(os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf"))
+    except Exception:
+        pass
+    for p in cands:
+        if os.path.exists(p):
+            pdfmetrics.registerFont(TTFont("MPC", p)); return "MPC", 90, "DejaVu Sans (90% width)"
+    return "Helvetica", 88, "Helvetica (88% width) - DejaVu fonts not found"
+
+# ------------------------------------------------------------------ template layout
+def words(page):
+    return page.extract_words(keep_blank_chars=False, x_tolerance=1.5)
+
+def find_label(ws, text):
+    parts = text.split(); hits = []
+    for w in ws:
+        if w["text"].strip() != parts[0]:
+            continue
+        cur = dict(w); ok = True
+        for p in parts[1:]:
+            nxt = next((v for v in ws if v["text"].strip() == p and abs(v["top"] - cur["top"]) < 2
+                        and 0 <= v["x0"] - cur["x1"] < 14), None)
+            if nxt is None:
+                ok = False; break
+            cur["x1"] = nxt["x1"]
+        if ok:
+            hits.append(cur)
+    if not hits:
+        raise Stop(f"Label '{text}' not found on the template - is this the blank Masterpiece estimate?")
+    return sorted(hits, key=lambda h: h["top"])[0]
+
+def hrules(page, minw, maxw):
+    out = []
+    for r in page.rects + page.lines:
+        if abs(r["bottom"] - r["top"]) < 2 and minw <= r["x1"] - r["x0"] <= maxw:
+            out.append({"x0": r["x0"], "x1": r["x1"], "top": r["top"]})
+    out.sort(key=lambda r: (round(r["top"], 1), r["x0"]))
+    ded = []
+    for r in out:
+        if not any(abs(r["top"] - d["top"]) < 1 and abs(r["x0"] - d["x0"]) < 2 for d in ded):
+            ded.append(r)
+    return ded
+
+def rule_after(page, label, minw=40, maxw=260):
+    c = [r for r in hrules(page, minw, maxw)
+         if label["x1"] - 2 < r["x0"] < label["x1"] + 90 and label["bottom"] - 3 <= r["top"] < label["top"] + 24]
+    if not c:
+        raise Stop(f"No entry line found next to '{label['text']}' on the template.")
+    return min(c, key=lambda r: (round(r["top"]), r["x0"]))
+
+FIELDS = [("name", "Name:"), ("address", "Address:"), ("city_state_zip", "City/State/Zip:"), ("phone", "Phone:"),
+          ("windows", "Window(s):"), ("doors", "Door(s):"), ("patio_doors", "Patio Door(s):"), ("other", "Other:")]
+
+# ------------------------------------------------------------------ build
+def build(tpl_path, json_path, out_dir):
+    data = json.load(open(json_path))
+    font, hscale, font_label = pick_font()
+    report = {"font": font_label, "warnings": [], "adjusted": []}
+    width = lambda s, size: pdfmetrics.stringWidth(s, font, size) * hscale / 100.0
+
+    with pdfplumber.open(tpl_path) as pdf:
+        P = pdf.pages[0]; H = float(P.height); ws = words(P)
+        if not any(w["text"] == "Estimate" and w["top"] < 60 for w in ws):
+            report["warnings"].append("The template doesn't say 'Estimate' at the top - check the right file was used.")
+        field_rules = {k: rule_after(P, find_label(ws, lab)) for k, lab in FIELDS}
+        date_rule = rule_after(P, find_label(ws, "Date:"))
+        dl = find_label(ws, "Description:")
+        tot = find_label(ws, "Total:")
+        desc = [r for r in hrules(P, 400, 600) if dl["bottom"] < r["top"] < tot["top"]]
+        if len(desc) < 3:
+            raise Stop("Couldn't find the description lines on the template.")
+        dollar = [c for c in P.chars if c["text"] == "$" and abs(c["top"] - tot["top"]) < 4 and c["x0"] > tot["x0"]]
+        total_rule = [r for r in hrules(P, 40, 200) if abs(r["top"] - tot["bottom"]) < 8 and r["x0"] > tot["x0"]]
+        if not dollar or not total_rule:
+            raise Stop("Couldn't find the Total $ line on the template.")
+        dollar = dollar[0]; total_rule = total_rule[0]
+        tpl_customer = any(w["text"] == "Customer" and w["top"] < 160 for w in ws)
+
+    box_l = min(r["x0"] for r in desc); box_r = max(r["x1"] for r in desc)
+    left, right = box_l + 3.0, box_r - 3.0
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=(float(P.width), H))
+    def put(text, x, top_baseline, size, underline=False):
+        t = c.beginText(); t.setFont(font, size); t.setHorizScale(hscale)
+        t.setTextOrigin(x, H - top_baseline); t.textOut(text); c.drawText(t)
+        if underline:
+            w = width(text, size)
+            c.setLineWidth(0.6); c.line(x, H - top_baseline - 1.5, x + w, H - top_baseline - 1.5)
+
+    # --- header fields
+    fields = {}
+    for key, lab in FIELDS:
+        s = str(data.get(key, "") or "").strip()
+        fields[lab] = s
+        if not s:
+            continue
+        r = field_rules[key]; size = FIELD_SIZE; room = r["x1"] - r["x0"] - 4
+        while width(s, size) > room and size > 8:
+            size -= 0.5
+        if width(s, size) > room:
+            raise Stop(f"'{s}' is too long for the {lab} line.")
+        if size < FIELD_SIZE:
+            report["adjusted"].append(f"{lab} set at {size} pt to fit its line")
+        put(s, r["x0"] + 3, r["top"] - CLEAR * size - 0.4, size)
+    report["fields"] = fields
+    name = fields["Name:"]
+    if not name:
+        raise Stop("Customer name is missing from the transcription.")
+
+    # --- date and total
+    d = str(data.get("date", "") or "").strip()
+    if d:
+        put(d, date_rule["x0"] + 8, date_rule["top"] - CLEAR * BIG_SIZE, BIG_SIZE)
+    tot_s = str(data.get("total", "") or "").strip().lstrip("$").strip()
+    if tot_s:
+        if not re.fullmatch(r"[\d,]+\.\d\d", tot_s):
+            report["warnings"].append(f"Total '{tot_s}' isn't in the usual 1,234.56 form.")
+        put(tot_s, max(dollar["x1"] + 6, total_rule["x0"] + 2), total_rule["top"] - CLEAR * BIG_SIZE, BIG_SIZE)
+    report.update(date=d, total=tot_s)
+
+    # --- description
+    placed = []
+    lines = sorted(data.get("description", []), key=lambda l: int(l["line"]))
+    # Handwritten indents wobble a little; line up starts that are within 1.5 of
+    # the start on the line above so typed paragraphs have a clean left edge.
+    prev_line, prev_at = None, None
+    for ln in lines:
+        its = [i for i in ln.get("items", []) if str(i.get("text", "")).strip()]
+        if not its:
+            continue
+        first = min(its, key=lambda i: float(i.get("at", 0)))
+        a0 = float(first.get("at", 0))
+        if prev_line is not None and int(ln["line"]) == prev_line + 1 and abs(a0 - prev_at) <= 1.5:
+            first["at"] = prev_at
+        prev_line, prev_at = int(ln["line"]), float(first.get("at", 0))
+    seen = set()
+    for ln in lines:
+        n = int(ln["line"])
+        if n in seen:
+            raise Stop(f"Description line {n} is listed twice in the transcription.")
+        seen.add(n)
+        if n < 1:
+            raise Stop(f"Description line {n} doesn't exist - lines are numbered from 1.")
+
+    # Join handwritten lines that only broke because the writer ran out of room
+    # ("continues": true), then move everything below up. Blank lines that were
+    # left in the handwriting are kept as blank lines.
+    rows = []; prev_n = 0
+    for ln in lines:
+        n = int(ln["line"])
+        items = sorted([dict(i) for i in ln.get("items", []) if str(i.get("text", "")).strip()],
+                       key=lambda i: float(i.get("at", 0)))
+        if not items:
+            continue
+        if ln.get("continues") and rows and prev_n == n - 1:
+            last = rows[-1]["items"][-1]
+            last["text"] = str(last["text"]).strip() + " " + str(items[0]["text"]).strip()
+            rows[-1]["src"].append(n)
+            items = items[1:]
+            if items:
+                rows.append({"src": [n], "items": items, "gap": 0})
+        else:
+            rows.append({"src": [n], "items": items, "gap": n - prev_n - 1})
+        prev_n = n
+
+    def xpos(it):
+        return max(left, box_l + (box_r - box_l) * max(0.0, float(it.get("at", 0))) / 100.0)
+
+    def draw_row(items, n, size, xs):
+        any_ul = any(it.get("underline") for it in items)
+        base = desc[n - 1]["top"] - (3.4 if any_ul else CLEAR * size)
+        for k, it in enumerate(items):
+            put(str(it["text"]).strip(), xs[k], base, size, bool(it.get("underline")))
+
+    out = 0
+    for row in rows:
+        out += row["gap"] + 1
+        items = row["items"]
+        if out > len(desc):
+            raise Stop(f"The description needs more than the template's {len(desc)} lines.")
+        if len(items) == 1:
+            # one piece of text: wrap it at the edge of the box, same indent
+            it = items[0]; x = xpos(it); words_ = str(it["text"]).split()
+            def wrap(sz):
+                chunks = []; cur = ""
+                for wd in words_:
+                    trial = (cur + " " + wd).strip()
+                    if cur and x + width(trial, sz) > right:
+                        chunks.append(cur); cur = wd
+                    else:
+                        cur = trial
+                chunks.append(cur)
+                return chunks
+            lsize = DESC_SIZE
+            chunks = wrap(lsize)
+            # don't leave one or two words alone on a line: set the line a touch
+            # smaller (never below 11 pt) if that keeps it on one line
+            if len(chunks) == 2 and len(chunks[-1].split()) <= 2:
+                sz = DESC_SIZE
+                while sz > 11.0 and len(wrap(sz)) > 1:
+                    sz -= 0.25
+                if len(wrap(sz)) == 1:
+                    lsize = sz; chunks = wrap(sz)
+                    report["adjusted"].append(f"typed line {out} set at {sz} pt so it fits on one line")
+            if any(x + width(ch, lsize) > right for ch in chunks):
+                raise Stop(f"A word on handwritten line {row['src'][0]} is too long to fit on a line.")
+            if out + len(chunks) - 1 > len(desc):
+                raise Stop(f"The description needs more than the template's {len(desc)} lines.")
+            for j, ch in enumerate(chunks):
+                piece = dict(it, text=ch)
+                draw_row([piece], out + j, lsize, [x])
+                placed.append({"line": out + j, "from_handwritten_lines": row["src"], "text": ch, "size": lsize})
+            if len(chunks) > 1:
+                report["adjusted"].append(f"handwritten line(s) {row['src']} wrapped onto {len(chunks)} typed lines")
+            out += len(chunks) - 1
+            continue
+        for size in [DESC_SIZE - k * 0.5 for k in range(int((DESC_SIZE - DESC_MIN) / 0.5) + 1)]:
+            sp = width(" ", size) * 1.5
+            xs = []; ws_ = [width(str(i["text"]).strip(), size) for i in items]
+            for k, it in enumerate(items):
+                x = xpos(it)
+                if xs:
+                    x = max(x, xs[-1] + ws_[k - 1] + sp)        # don't run into the previous piece
+                xs.append(x)
+            if xs[-1] + ws_[-1] > right:                       # pull back inside the box
+                xs[-1] = right - ws_[-1]
+                for k in range(len(items) - 2, -1, -1):
+                    xs[k] = min(xs[k], xs[k + 1] - sp - ws_[k])
+            if xs[0] >= left - 0.01:
+                break
+        else:
+            raise Stop(f"Handwritten line {row['src'][0]} is too long to fit, even at {DESC_MIN} pt. "
+                       f"Split it into two lines in the transcription and run again.")
+        moved = [items[k]["text"] for k in range(len(items)) if abs(xs[k] - xpos(items[k])) > 1]
+        if size < DESC_SIZE:
+            report["adjusted"].append(f"typed line {out} set at {size} pt to fit")
+        if moved:
+            report["adjusted"].append(f"typed line {out}: nudged {moved} so nothing overlaps or runs outside the box")
+        draw_row(items, out, size, xs)
+        placed.append({"line": out, "from_handwritten_lines": row["src"],
+                       "text": "   ".join(str(i["text"]).strip() for i in items), "size": size})
+    report["description_lines"] = placed
+    if tpl_customer:
+        report["warnings"].append("This template has Customer #/Order # boxes; they were left blank as intended.")
+    c.save()
+
+    # --- merge onto the template
+    over = PdfReader(io.BytesIO(buf.getvalue())).pages[0]
+    w = PdfWriter(clone_from=tpl_path)
+    w.pages[0].merge_page(over)
+    last = re.sub(r"[^\w\-' ]", "", name).split()[-1]
+    last = last[0].upper() + last[1:].lower() if last.isupper() or last.islower() else last
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"{last} Estimate.pdf")
+    with open(out, "wb") as fh:
+        w.write(fh)
+    report["output"] = out
+    return report
+
+if __name__ == "__main__":
+    if len(sys.argv) != 4:
+        print(__doc__); sys.exit(2)
+    try:
+        print(json.dumps(build(*sys.argv[1:4]), indent=2))
+    except Stop as e:
+        print(json.dumps({"error": str(e)}, indent=2)); sys.exit(1)

@@ -1,0 +1,546 @@
+#!/usr/bin/env python3
+"""
+Masterpiece Construction Experts - Estimate -> Sales Contract builder.
+
+Usage:
+  python3 build_contract.py ESTIMATE.pdf CONTRACT_TEMPLATE.pdf CUSTOMER_NO ORDER_NO OUTPUT_DIR
+
+Copies the customer's filled-in text from the estimate onto the blank sales
+contract template (including any price math typed under the estimate's
+"*Significant changes" footnote, which goes on the contract's last description
+lines lined up over the Total/Deposit/Final Due amounts; the footnote itself is
+left off), keeping the estimate's own font, line breaks, word spacing,
+indentation, blank rows and underlined prices. Adds Customer #, Order #, Total,
+Deposit (half of total, rounded UP to the cent) and Final Due (remainder).
+Everything else on the template is left untouched.
+Output: "<Customer Last Name> Sales Contract.pdf" in OUTPUT_DIR.
+"""
+import sys, os, re, io, json, subprocess
+
+def need(mod, pkg=None):
+    try:
+        return __import__(mod)
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                        "--break-system-packages", pkg or mod], check=False)
+        return __import__(mod)
+
+need("pypdf"); need("pdfplumber"); need("fontTools", "fonttools")
+import pdfplumber
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import (DecodedStreamObject, NameObject, DictionaryObject,
+                           ArrayObject, FloatObject, ContentStream)
+from fontTools.cffLib import CFFFontSet
+
+# Lines of text sit at least this fraction of their font size above the ruled
+# line, so descenders (g, j, p, y and commas) don't touch it.
+CLEAR = 0.2
+
+class Stop(Exception):
+    pass
+
+TEMPLATE_FONT_HINTS = ("calibri", "baguet")       # fonts that belong to the printed templates
+def is_template_font(name):
+    n = str(name).lower()
+    return any(h in n for h in TEMPLATE_FONT_HINTS)
+
+def money(cents):
+    return f"{cents // 100:,}.{cents % 100:02d}"
+
+def parse_money(s):
+    m = re.search(r"\$?\s*([\d,]+)\.(\d\d)", s)
+    if not m:
+        raise Stop(f"Could not read a dollar amount from '{s}'")
+    return int(m.group(1).replace(",", "")) * 100 + int(m.group(2))
+
+# ---------------------------------------------------------------- layout reading
+def words(page):
+    return page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False,
+                              x_tolerance=1.5)
+
+def find_label(ws, text, region=None):
+    parts = text.split()
+    hits = []
+    for i, w in enumerate(ws):
+        if w["text"].strip() != parts[0]:
+            continue
+        cur = dict(w); ok = True
+        for p in parts[1:]:
+            nxt = next((v for v in ws if v["text"].strip() == p and abs(v["top"] - cur["top"]) < 2
+                        and 0 <= v["x0"] - cur["x1"] < 12), None)
+            if nxt is None:
+                ok = False; break
+            cur["x1"] = nxt["x1"]
+        if ok:
+            cur["text"] = text; hits.append(cur)
+    if region:
+        x0, t0, x1, t1 = region
+        hits = [w for w in hits if x0 <= w["x0"] <= x1 and t0 <= w["top"] <= t1]
+    if not hits:
+        raise Stop(f"Template label '{text}' not found - is this the standard Masterpiece form?")
+    return hits[0]
+
+def hrules(page, minw, maxw):
+    out = []
+    for r in page.rects + page.lines:
+        h = abs(r["bottom"] - r["top"]); w = r["x1"] - r["x0"]
+        if h < 2 and minw <= w <= maxw:
+            out.append({"x0": r["x0"], "x1": r["x1"], "top": r["top"]})
+    out.sort(key=lambda r: (round(r["top"], 1), r["x0"]))
+    # de-duplicate
+    ded = []
+    for r in out:
+        if not any(abs(r["top"] - d["top"]) < 1 and abs(r["x0"] - d["x0"]) < 2 for d in ded):
+            ded.append(r)
+    return ded
+
+def field_rule(page, label):
+    cands = [r for r in hrules(page, 40, 200)
+             if label["x1"] - 2 < r["x0"] < label["x1"] + 80
+             and label["bottom"] - 3 <= r["top"] < label["top"] + 22]
+    if not cands:
+        raise Stop(f"No entry line found next to '{label['text']}'")
+    return min(cands, key=lambda r: (round(r["top"]), r["x0"]))
+
+LABELS_LEFT = ["Name:", "Address:", "City/State/Zip:", "Phone:"]
+LABELS_RIGHT = ["Window(s):", "Door(s):", "Patio Door(s):", "Other:"]
+
+def fill_chars(page):
+    return [c for c in page.chars if not is_template_font(c["fontname"]) and c["text"].strip()]
+
+def baseline(c, H):           # top-down coordinate of the baseline
+    return H - c["matrix"][5]
+
+def text_in(chars, x0, t0, x1, t1):
+    sel = [c for c in chars if x0 <= c["x0"] and c["x1"] <= x1 and t0 <= c["top"] and c["bottom"] <= t1]
+    sel.sort(key=lambda c: (round(c["top"]), c["x0"]))
+    out = ""; last = None
+    for c in sel:
+        if last is not None and c["x0"] - last["x1"] > c["size"] * 0.15:
+            out += " "
+        out += c["text"]; last = c
+    return out.strip()
+
+# ---------------------------------------------------------------- content filtering
+PATH_OPS = {b"m", b"l", b"c", b"v", b"y", b"h", b"re"}
+PAINT_OPS = {b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*", b"n"}
+SHOW_OPS = {b"Tj", b"TJ", b"'", b'"'}
+
+def _mul(m, n):
+    a, b, c, d, e, f = m; A, B, C, D, E, F = n
+    return (a*A + b*C, a*B + b*D, c*A + d*C, c*B + d*D, e*A + f*C + E, e*B + f*D + F)
+
+def _pt(m, x, y):
+    a, b, c, d, e, f = m
+    return (a*x + c*y + e, b*x + d*y + f)
+
+def text_only_stream(page, reader, box=None):
+    """Estimate page content with images, ruled lines, boxes and all template
+    (Calibri/script) text removed. Keeps the fill-in text and short underlines.
+    With `box` (x0, y0, x1, y1 in PDF coordinates) only text and underlines that
+    start inside that box are kept, so nothing hidden is carried along."""
+    fonts = page["/Resources"].get_object().get("/Font", {})
+    basefont = {k: str(v.get_object().get("/BaseFont", "")) for k, v in fonts.items()}
+    cs = ContentStream(page.get_contents(), reader)
+    out = []; pending = []; clip = False
+    font = None; stack = []
+    I = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+    ctm = I; tm = I; tlm = I; tl = 0.0
+    def inside(x, y):
+        return box is None or (box[0] - 2 <= x <= box[2] + 2 and box[1] <= y <= box[3])
+    def next_line():
+        nonlocal tm, tlm
+        tlm = _mul((1, 0, 0, 1, 0, -tl), tlm); tm = tlm
+    for operands, op in cs.operations:
+        if op in PATH_OPS:
+            pending.append((operands, op)); continue
+        if op in (b"W", b"W*"):
+            clip = True; pending.append((operands, op)); continue
+        if op in PAINT_OPS:
+            keep = False
+            rects = [o for o, p in pending if p == b"re"]
+            if op == b"n":
+                keep = True
+            elif len(pending) == 1 and len(rects) == 1:
+                x, y, w, h = (float(v) for v in rects[0])
+                keep = abs(h) <= 1.0 and abs(w) <= 120          # price underlines
+                if keep and box is not None:
+                    cx, cy = _pt(ctm, x + w / 2, y + h / 2)
+                    keep = inside(cx, cy)
+            elif op in (b"S", b"s") and [q for _, q in pending] == [b"m", b"l"]:
+                (x0_, y0_), (x1_, y1_) = [tuple(float(v) for v in o) for o, _ in pending]
+                keep = abs(y1_ - y0_) < 0.5 and abs(x1_ - x0_) <= 120   # drawn underlines
+                if keep and box is not None:
+                    cx, cy = _pt(ctm, (x0_ + x1_) / 2, y0_)
+                    keep = inside(cx, cy)
+            if keep:
+                out.extend(pending); out.append((operands, op))
+            elif clip:
+                out.extend(pending); out.append(([], b"n"))
+            pending = []; clip = False; continue
+        if op == b"Do" or op == b"INLINE IMAGE":
+            continue
+        if op == b"q":
+            stack.append((font, ctm))
+        elif op == b"Q":
+            if stack:
+                font, ctm = stack.pop()
+        elif op == b"cm":
+            ctm = _mul(tuple(float(v) for v in operands), ctm)
+        elif op == b"BT":
+            tm = tlm = I
+        elif op == b"Tm":
+            tm = tlm = tuple(float(v) for v in operands)
+        elif op == b"Td":
+            tlm = _mul((1, 0, 0, 1, float(operands[0]), float(operands[1])), tlm); tm = tlm
+        elif op == b"TD":
+            tl = -float(operands[1])
+            tlm = _mul((1, 0, 0, 1, float(operands[0]), float(operands[1])), tlm); tm = tlm
+        elif op == b"TL":
+            tl = float(operands[0])
+        elif op == b"T*":
+            next_line()
+        elif op == b"Tf":
+            font = str(operands[0])
+        if op in SHOW_OPS:
+            if op in (b"'", b'"'):
+                next_line()
+            x, y = _pt(ctm, tm[4], tm[5])
+            drop = (font is not None and is_template_font(basefont.get(font, ""))) or not inside(x, y)
+            if drop:
+                if op == b"'":
+                    out.append(([], b"T*"))
+                elif op == b'"':
+                    out.append(([operands[0]], b"Tw")); out.append(([operands[1]], b"Tc")); out.append(([], b"T*"))
+                continue
+        out.append((operands, op))
+    cs.operations = out
+    return cs.get_data()
+
+# ---------------------------------------------------------------- glyphs for new text
+def glyph_sources(est_page):
+    """Map each character to a Bell Centennial subset font in the estimate that
+    actually contains that glyph (CID = Unicode - 0x1F in this font)."""
+    fonts = est_page["/Resources"].get_object().get("/Font", {})
+    avail = {}
+    for name, ref in fonts.items():
+        f = ref.get_object()
+        if "bellcentennial" not in str(f.get("/BaseFont", "")).lower():
+            continue
+        try:
+            d = f["/DescendantFonts"][0].get_object()
+            ff = d["/FontDescriptor"].get_object()["/FontFile3"].get_object().get_data()
+            cff = CFFFontSet(); cff.decompile(io.BytesIO(ff), None)
+            top = cff[cff.fontNames[0]]
+            for g in top.charset:
+                if g.startswith("cid"):
+                    cid = int(g[3:])
+                    if cid > 0:
+                        avail.setdefault(chr(cid + 0x1F), name)
+        except Exception:
+            continue
+    return avail
+
+def pick_font():
+    """The free font the typed estimates use (DejaVu Sans Condensed), or DejaVu Sans
+    at 90% width, which looks almost the same. Helvetica only as a last resort."""
+    import glob
+    need("reportlab")
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    here = os.path.dirname(os.path.abspath(__file__))
+    for p in [os.path.join(here, "..", "assets", "DejaVuSansCondensed.ttf")] + \
+             glob.glob("/usr/share/fonts/**/DejaVuSansCondensed.ttf", recursive=True):
+        if os.path.exists(p):
+            pdfmetrics.registerFont(TTFont("MPC", p)); return "MPC", 100
+    cands = glob.glob("/usr/share/fonts/**/DejaVuSans.ttf", recursive=True)
+    try:
+        import matplotlib
+        cands.append(os.path.join(os.path.dirname(matplotlib.__file__), "mpl-data", "fonts", "ttf", "DejaVuSans.ttf"))
+    except Exception:
+        pass
+    for p in cands:
+        if os.path.exists(p):
+            pdfmetrics.registerFont(TTFont("MPC", p)); return "MPC", 90
+    return "Helvetica", 88
+
+def overlay(items, W, H):
+    """Page with the given (text, x, y, size) items drawn in pick_font()."""
+    from reportlab.pdfgen import canvas
+    font, hs = pick_font()
+    buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
+    for s, x, y, size in items:
+        t = c.beginText(); t.setFont(font, size); t.setHorizScale(hs)
+        t.setTextOrigin(x, y); t.textOut(s); c.drawText(t)
+    c.save()
+    return PdfReader(io.BytesIO(buf.getvalue())).pages[0], font
+
+def draw(s, x, y, size, avail):
+    """PDF text operators. Uses the estimate's own font where every glyph is
+    available, otherwise Helvetica for the whole string."""
+    ops = ["BT", f"1 0 0 1 {x:.3f} {y:.3f} Tm"]
+    if all(ch in avail for ch in s):
+        cur = None
+        for ch in s:
+            if avail[ch] != cur:
+                cur = avail[ch]; ops.append(f"{cur} {size} Tf")
+            ops.append(f"<{ord(ch) - 0x1F:04X}> Tj")
+        used_fallback = False
+    else:
+        ops += [f"/HelvFB {size} Tf", f"({s}) Tj"]
+        used_fallback = True
+    ops.append("ET")
+    return "\n".join(ops), used_fallback
+
+# ---------------------------------------------------------------- main build
+def build(est_path, con_path, cust_no, order_no, out_dir):
+    est_r = PdfReader(est_path); ep = est_r.pages[0]
+    w = PdfWriter(clone_from=con_path); cp = w.pages[0]
+    H = float(ep.mediabox.height)
+    report = {"warnings": []}
+
+    with pdfplumber.open(est_path) as ed, pdfplumber.open(con_path) as cd:
+        E = ed.pages[0]; C = cd.pages[0]
+        ew, cw = words(E), words(C)
+        fc = fill_chars(E)
+        if not fc:
+            raise Stop("No filled-in text found on the estimate.")
+
+        # --- header fields (left + right columns)
+        regions = []
+        fields = {}
+        prev_rule = {}
+        for lab in LABELS_LEFT + LABELS_RIGHT:
+            el = find_label(ew, lab); cl = find_label(cw, lab)
+            er = field_rule(E, el); cr_ = field_rule(C, cl)
+            col = "L" if lab in LABELS_LEFT else "R"
+            # never reach up past the entry line above, or that field's text gets copied twice
+            top_lim = er["top"] - 16
+            if col in prev_rule:
+                top_lim = max(top_lim, prev_rule[col] + 1.5)
+            prev_rule[col] = er["top"]
+            clip = (er["x0"] - 2, top_lim, er["x1"] + 2, er["top"] + 1.5)
+            dt = cr_["top"] - er["top"]
+            fch = [c for c in fc if clip[0] <= c["x0"] and c["x1"] <= clip[2] and clip[1] <= c["top"] and c["bottom"] <= clip[3]]
+            if fch:   # keep descenders clear of the entry line
+                b0 = max(baseline(c, H) for c in fch)
+                gap = CLEAR * max(c["size"] for c in fch)
+                if er["top"] - b0 < gap:
+                    dt = cr_["top"] - gap - b0
+            regions.append((clip, cr_["x0"] - er["x0"], dt))
+            fields[lab] = text_in(fc, *clip)
+        report["fields"] = fields
+        name = fields["Name:"]
+        if not name:
+            raise Stop("Customer name is blank on the estimate.")
+        last = re.sub(r"[^\w\-' ]", "", name).split()[-1]
+
+        # --- description rows
+        e_lab = find_label(ew, "Description:")
+        c_lab = find_label(cw, "Description:")
+        e_rules = [r for r in hrules(E, 400, 600) if r["top"] > e_lab["bottom"]]
+        c_rules = [r for r in hrules(C, 400, 600) if r["top"] > c_lab["bottom"]]
+        tot_lab = find_label(ew, "Total:")
+        stop_top = tot_lab["top"]
+        for wd in ew:      # template footnote under the description
+            if wd["text"].startswith("*Significant") and wd["top"] > e_lab["bottom"]:
+                stop_top = min(stop_top, wd["top"] - 2)
+        # include the price math typed below the template footnote (the footnote itself is template text and is dropped)
+        foot_top = stop_top
+        stop_top = tot_lab["top"] - 4
+        desc = [c for c in fc if e_lab["bottom"] < c["top"] and c["bottom"] < stop_top + 3]
+        rows = []
+        for c in sorted(desc, key=lambda c: baseline(c, H)):
+            b = baseline(c, H)
+            if rows and abs(rows[-1]["b"] - b) < 2:
+                rows[-1]["chars"].append(c)
+            else:
+                rows.append({"b": b, "chars": [c]})
+        if not rows:
+            raise Stop("No description text found on the estimate.")
+        dx = c_rules[0]["x0"] - e_rules[0]["x0"]
+        e_lines = list(E.lines) + list(E.rects)
+        # Estimates typed in the company's Bell Centennial font are copied at full
+        # size. Taller fonts (like the free DejaVu font of the typed-estimate skill)
+        # are shrunk a little when the contract's lines are too close together for
+        # them, so the text doesn't crowd the line above.
+        pitch = (c_rules[-1]["top"] - c_rules[0]["top"]) / max(1, len(c_rules) - 1)
+        dsize = max(c["size"] for c in desc)
+        bell = all("bellcentennial" in c["fontname"].lower() for c in desc)
+        scale = 1.0 if bell else min(1.0, round(pitch / (dsize * 1.16), 3))
+        if scale < 1.0:
+            report["warnings"].append(f"The description was set at {round(dsize * scale, 1)} pt "
+                                      f"(from {round(dsize, 1)} pt) to fit the contract's line spacing.")
+        prices = []
+        for i, r in enumerate(rows):
+            ch = r["chars"]
+            r["x0"] = min(c["x0"] for c in ch); r["x1"] = max(c["x1"] for c in ch)
+            r["top"] = min(c["top"] for c in ch); r["bot"] = max(c["bottom"] for c in ch)
+            r["text"] = text_in(ch, -1, -1, 9999, 9999)
+            r["price"] = bool(re.fullmatch(r"\$\s?[\d,]+\.\d\d", r["text"]))
+            if r["price"] and r["top"] <= foot_top:
+                prices.append(parse_money(r["text"]))
+            idx = next((k for k, er in enumerate(e_rules) if er["top"] >= r["b"] - 0.5), None)
+            if idx is None:
+                raise Stop(f"Description line '{r['text'][:40]}' is below the estimate's lines.")
+            r["idx"] = idx
+        # rows typed below the footnote go on the contract's last lines, keeping their spacing
+        tail = [r for r in rows if r["top"] > foot_top]
+        if tail:
+            shift = (len(c_rules) - 1) - tail[-1]["idx"]
+            for r in tail:
+                r["idx"] += shift
+            body = [r for r in rows if r["top"] <= foot_top]
+            if body and body[-1]["idx"] >= tail[0]["idx"]:
+                raise Stop(f"The description and the price math under it need more lines than the contract's "
+                           f"{len(c_rules)}. It won't fit without changing the layout.")
+        # keep line positions monotonic and unique
+        for i in range(1, len(rows)):
+            if rows[i]["idx"] <= rows[i - 1]["idx"]:
+                rows[i]["idx"] = rows[i - 1]["idx"] + 1
+        if rows[-1]["idx"] >= len(c_rules):
+            raise Stop(f"The description needs {rows[-1]['idx'] + 1} lines but the contract only has "
+                       f"{len(c_rules)}. It won't fit without changing the layout.")
+        def overlap(a, b):
+            return a["x0"] < b["x1"] and b["x0"] < a["x1"]
+        tail_regions = []
+        for i, r in enumerate(rows):
+            top = r["b"] - 10.6; bot = r["b"] + 3.3
+            if i > 0 and overlap(r, rows[i - 1]):
+                top = max(top, rows[i - 1]["bot"] + 0.1)
+            if i + 1 < len(rows) and overlap(r, rows[i + 1]):
+                bot = min(bot, rows[i + 1]["top"] - 0.1)
+            size = max(c["size"] for c in r["chars"])
+            sc = scale
+            # rows with an underline (prices, totals) sit a little higher so the
+            # underline stays clear of the ruled line
+            has_ul = any(abs(u["bottom"] - u["top"]) < 1.5 and 10 < u["x1"] - u["x0"] < 120
+                         and r["x0"] - 2 <= u["x0"] and u["x1"] <= r["x1"] + 2
+                         and 0 < u["top"] - r["b"] < 4 for u in e_lines)
+            target = c_rules[r["idx"]]["top"] - (3.0 if (r["price"] or has_ul) else CLEAR * size * sc)
+            if r["top"] > foot_top:
+                tail_regions.append(len(regions))
+            if sc == 1.0:
+                regions.append(((r["x0"] - 3, top, r["x1"] + 3, bot), dx, target - r["b"]))
+            else:   # shrink about the box's left edge so positions along the line keep their proportions
+                m = (sc, 0, 0, sc, c_rules[0]["x0"] - sc * e_rules[0]["x0"], (H - target) - sc * (H - r["b"]))
+                regions.append(((r["x0"] - 3, top, r["x1"] + 3, bot), dx, target - r["b"], m))
+        report["description_lines"] = [{"contract_line": r["idx"] + 1, "text": r["text"]} for r in rows]
+
+        # --- total
+        tline = [c for c in fc if abs(c["top"] - tot_lab["top"]) < 6 and c["x0"] > tot_lab["x0"]]
+        total = parse_money(text_in(tline, -1, -1, 9999, 9999))
+        tail_amts = []
+        for r in tail:
+            for m_ in re.finditer(r"(-?)\$\s?([\d,]+)\.(\d\d)", r["text"]):
+                v = int(m_.group(2).replace(",", "")) * 100 + int(m_.group(3))
+                tail_amts.append(-v if m_.group(1) else v)
+        if tail_amts:
+            if sum(tail_amts) != total:
+                report["warnings"].append(f"The price math under the description adds to ${money(sum(tail_amts))} "
+                                          f"but the estimate total is ${money(total)}. The estimate's total was used.")
+        elif prices and sum(prices) != total:
+            report["warnings"].append(f"Line prices add to ${money(sum(prices))} but the estimate total is "
+                                      f"${money(total)}. The estimate's total was used.")
+        deposit = (total + 1) // 2
+        final = total - deposit
+        report.update(total=money(total), deposit=money(deposit), final_due=money(final))
+
+        # --- positions for new text on the contract
+        cust = find_label(cw, "Customer"); order = find_label(cw, "Order")
+        cell_x = min(r["x0"] for r in hrules(C, 40, 200) if abs(r["top"] - cust["top"]) < 4 and r["x0"] > cust["x1"]) + 5.6
+        def label_baseline(label_word):
+            cs_ = [c for c in C.chars if abs(c["top"] - label_word["top"]) < 1 and c["x0"] >= label_word["x0"] - 0.5]
+            return H - cs_[0]["matrix"][5]
+        def dollar_after(label):
+            lab = find_label(cw, label, (300, 480, 612, 560))
+            d = [c for c in C.chars if c["text"] == "$" and abs(c["top"] - lab["top"]) < 3 and c["x0"] > lab["x0"]]
+            if not d:
+                raise Stop(f"'$' after '{label}' not found on contract.")
+            return d[0]
+        dollars = [dollar_after(l) for l in ("Total", "Deposit", "Final")]
+        amt_x = max(d["x1"] for d in dollars) + 3.0
+        # the price math lines up over the contract's amounts, as it lines up over the total on the estimate
+        tdx = amt_x - min(c["x0"] for c in tline)
+        for k in tail_regions:
+            reg = list(regions[k]); reg[1] = tdx
+            if len(reg) > 3:
+                m = list(reg[3]); m[4] += tdx - dx; reg[3] = tuple(m)
+            regions[k] = tuple(reg)
+        nclip = regions[0][0]
+        name_chars = [c for c in fc if nclip[0] <= c["x0"] <= nclip[2] and nclip[1] <= c["top"] <= nclip[3]]
+        hdr_size = round(name_chars[0]["size"], 2) if name_chars else 10.98
+        amt_size = round(dollars[0]["size"], 2)
+
+    # ---------- assemble PDF
+    avail = glyph_sources(ep)
+    efonts = ep["/Resources"]["/Font"].get_object().clone(w)
+    helv = DictionaryObject({NameObject("/Type"): NameObject("/Font"), NameObject("/Subtype"): NameObject("/Type1"),
+                             NameObject("/BaseFont"): NameObject("/Helvetica"),
+                             NameObject("/Encoding"): NameObject("/WinAnsiEncoding")})
+    efonts[NameObject("/HelvFB")] = w._add_object(helv)
+    res = DictionaryObject({NameObject("/Font"): efonts})
+    egs = ep["/Resources"].get_object().get("/ExtGState")
+    if egs is not None:
+        res[NameObject("/ExtGState")] = egs.get_object().clone(w)
+    def form(data):
+        s = DecodedStreamObject(); s.set_data(data)
+        s.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Form"),
+                  NameObject("/BBox"): ArrayObject([FloatObject(0), FloatObject(0),
+                                                    FloatObject(float(ep.mediabox.width)), FloatObject(H)]),
+                  NameObject("/Resources"): res})
+        return w._add_object(s)
+
+    # New text (Customer #, Order #, amounts) uses the estimate's own font when it
+    # has every character; otherwise it all goes in the free DejaVu font the typed
+    # estimates use, so the contract never mixes in a third font.
+    adds = [(cust_no, cell_x, H - label_baseline(cust), hdr_size),
+            (order_no, cell_x, H - label_baseline(order), hdr_size)] + \
+           [(s_, amt_x, d["matrix"][5], amt_size) for s_, d in zip((money(total), money(deposit), money(final)), dollars)]
+    new = ["0 g"]; rl_items = []
+    if all(ch in avail for s_, *_ in adds for ch in s_):
+        for s_, x_, y_, sz in adds:
+            t, _ = draw(s_, x_, y_, sz, avail); new.append(t)
+    else:
+        rl_items = adds
+
+    xo = cp["/Resources"].get_object().get("/XObject")
+    if xo is None:
+        cp["/Resources"].get_object()[NameObject("/XObject")] = DictionaryObject()
+        xo = cp["/Resources"].get_object()["/XObject"]
+    xo = xo.get_object()
+    xo[NameObject("/MPCNew")] = form("\n".join(new).encode("latin-1"))
+
+    ops = []
+    for k, reg in enumerate(regions):
+        (x0, t0, x1, t1), dx_, dt = reg[:3]
+        mtx = reg[3] if len(reg) > 3 else (1, 0, 0, 1, dx_, -dt)
+        name = f"/MPCEst{k}"
+        xo[NameObject(name)] = form(text_only_stream(ep, est_r, (x0, H - t1, x1, H - t0)))
+        ops.append("q " + " ".join(f"{v:.4f}" for v in mtx) + f" cm {x0:.3f} {H - t1:.3f} {x1 - x0:.3f} {t1 - t0:.3f} re W n {name} Do Q")
+    ops.append("q /MPCNew Do Q")
+    old = cp.get_contents().get_data()
+    cs = DecodedStreamObject(); cs.set_data(b"q\n" + old + b"\nQ\n" + "\n".join(ops).encode())
+    cp[NameObject("/Contents")] = w._add_object(cs)
+    if rl_items:
+        ov, used = overlay(rl_items, float(cp.mediabox.width), H)
+        cp.merge_page(ov)
+        if used == "Helvetica":
+            report["warnings"].append("The DejaVu font wasn't found, so the Customer #, Order # and amounts are in Helvetica.")
+
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"{last} Sales Contract.pdf")
+    with open(out, "wb") as fh:
+        w.write(fh)
+    report["output"] = out
+    report["customer_no"] = cust_no; report["order_no"] = order_no
+    return report
+
+if __name__ == "__main__":
+    if len(sys.argv) != 6:
+        print(__doc__); sys.exit(2)
+    try:
+        rep = build(*sys.argv[1:6])
+        print(json.dumps(rep, indent=2))
+    except Stop as e:
+        print(json.dumps({"error": str(e)}, indent=2)); sys.exit(1)

@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""
+Masterpiece typed estimate - step 1: measure the handwritten estimate photo.
+
+Usage:
+  python3 analyze_photo.py PHOTO.jpg OUTPUT_DIR
+
+Finds the ruled description lines in a photo of a handwritten Masterpiece
+estimate, numbers them from the top (line 1 = first line under "Description:"),
+and measures where the handwriting sits on each line.
+
+Writes:
+  OUTPUT_DIR/lines_overview.png   whole page with every description line numbered
+  OUTPUT_DIR/line_NN.png          close-up of each line that has writing on it,
+                                  with a 0-100 ruler along the top
+  prints a JSON report: for each line with writing, the ink "spans" as
+  positions from 0 (left end of the ruled line) to 100 (right end).
+  A span below 0 is writing in the left margin.
+"""
+import sys, os, json, subprocess
+
+def need(mod, pkg=None):
+    try:
+        return __import__(mod)
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "--break-system-packages", pkg or mod], check=False)
+        return __import__(mod)
+
+need("numpy"); need("PIL", "pillow")
+import numpy as np
+from PIL import Image, ImageDraw, ImageOps, ImageFont
+
+def load(path):
+    im = Image.open(path)
+    im = ImageOps.exif_transpose(im).convert("L")
+    if im.width > 1800:                      # normalise size for stable thresholds
+        im = im.resize((1800, round(im.height * 1800 / im.width)))
+    return im
+
+def darkness(g):
+    """0..1 'ink' map that ignores uneven lighting."""
+    a = np.asarray(g, dtype=np.float32)
+    k = 41
+    pad = np.pad(a, k // 2, mode="edge")
+    c = pad.cumsum(0).cumsum(1)
+    c = np.pad(c, ((1, 0), (1, 0)))
+    s = c[k:, k:] - c[:-k, k:] - c[k:, :-k] + c[:-k, :-k]
+    bg = s / (k * k)
+    return np.clip((bg - a) / 60.0, 0, 1)
+
+def rotate_best(g):
+    best = None
+    for ang in np.arange(-3, 3.01, 0.25):
+        r = g.rotate(ang, resample=Image.BILINEAR, fillcolor=255)
+        d = darkness(r.resize((r.width // 3, r.height // 3)))
+        prof = (d > 0.4).mean(1)
+        score = float((prof ** 2).sum())
+        if best is None or score > best[0]:
+            best = (score, ang, r)
+    return best[1], best[2]
+
+def find_rules(d):
+    H, W = d.shape
+    ink = d > 0.35
+    rows = []
+    for y in range(H):
+        r = ink[y]
+        if r.mean() < 0.25:
+            continue
+        xs = np.flatnonzero(r)
+        # longest nearly-continuous run
+        gaps = np.flatnonzero(np.diff(xs) > 12)
+        starts = np.r_[0, gaps + 1]; ends = np.r_[gaps, len(xs) - 1]
+        k = int(np.argmax(xs[ends] - xs[starts]))
+        x0, x1 = xs[starts[k]], xs[ends[k]]
+        if x1 - x0 > 0.45 * W:
+            rows.append((y, x0, x1))
+    # merge adjacent rows into single rules
+    rules = []
+    for y, x0, x1 in rows:
+        if rules and y - rules[-1]["y1"] <= 2:
+            r = rules[-1]; r["y1"] = y; r["x0"] = min(r["x0"], x0); r["x1"] = max(r["x1"], x1)
+        else:
+            rules.append({"y0": y, "y1": y, "x0": x0, "x1": x1})
+    for r in rules:
+        r["y"] = (r["y0"] + r["y1"]) / 2
+    return rules
+
+def description_rules(rules):
+    """The longest run of evenly spaced long rules = the description box."""
+    if len(rules) < 4:
+        return []
+    best = []
+    for i in range(len(rules)):
+        for j in range(i + 1, min(i + 4, len(rules))):
+            step = rules[j]["y"] - rules[i]["y"]
+            if step < 15:
+                continue
+            seq = [rules[i], rules[j]]
+            while True:
+                want = seq[-1]["y"] + step
+                nxt = [r for r in rules if abs(r["y"] - want) < step * 0.2]
+                if not nxt:
+                    break
+                seq.append(min(nxt, key=lambda r: abs(r["y"] - want)))
+                step = (seq[-1]["y"] - seq[0]["y"]) / (len(seq) - 1)
+            if len(seq) > len(best):
+                best = seq
+    return best
+
+def main(photo, out_dir):
+    os.makedirs(out_dir, exist_ok=True)
+    g = load(photo)
+    ang, g = rotate_best(g)
+    d = darkness(g)
+    H, W = d.shape
+    rules = description_rules(find_rules(d))
+    if len(rules) < 5:
+        print(json.dumps({"error": "Couldn't find the description's ruled lines in the photo. "
+                                   "Read the line numbers and positions by eye instead."}))
+        return 1
+    L = float(np.median([r["x0"] for r in rules])); R = float(np.median([r["x1"] for r in rules]))
+    step = (rules[-1]["y"] - rules[0]["y"]) / (len(rules) - 1)
+    ink = d > 0.45
+    # remove the ruled lines themselves
+    for r in rules:
+        ink[max(0, int(r["y0"]) - 3): int(r["y1"]) + 4, :] = False
+    lines = []
+    for n, r in enumerate(rules, 1):
+        top = int(r["y"] - step * 0.95); bot = int(r["y"] + step * 0.12)
+        band = ink[max(0, top):bot, :]
+        col = band.sum(0) >= 2
+        col[: int(max(0, L - 0.12 * (R - L)))] = False      # far outside the box: ignore
+        col[int(min(W, R + 0.03 * (R - L))):] = False
+        xs = np.flatnonzero(col)
+        spans = []
+        if len(xs) and band.sum() > 40:
+            gap = step * 0.55
+            s = xs[0]; p = xs[0]
+            for x in xs[1:]:
+                if x - p > gap:
+                    spans.append((s, p)); s = x
+                p = x
+            spans.append((s, p))
+            spans = [(a, b) for a, b in spans if (b - a) > 4 or band[:, a:b + 1].sum() > 25]
+        pct = lambda x: round((x - L) / (R - L) * 100, 1)
+        lines.append({"line": n, "spans": [[pct(a), pct(b)] for a, b in spans]})
+        if spans:
+            y0 = max(0, int(r["y"] - step * 1.25)); y1 = min(H, int(r["y"] + step * 0.45))
+            crop = g.crop((0, y0, W, y1)).convert("RGB")
+            dr = ImageDraw.Draw(crop)
+            for t in range(0, 101, 10):
+                x = L + (R - L) * t / 100
+                dr.line([(x, 0), (x, 10 if t % 50 else 18)], fill=(220, 0, 0), width=2)
+                dr.text((x + 2, 0), str(t), fill=(220, 0, 0))
+            for a, b in spans:
+                dr.line([(a, crop.height - 3), (b, crop.height - 3)], fill=(0, 120, 255), width=3)
+            dr.text((4, crop.height - 14), f"line {n}", fill=(0, 120, 255))
+            crop.save(os.path.join(out_dir, f"line_{n:02d}.png"))
+    ov = g.convert("RGB"); dr = ImageDraw.Draw(ov)
+    for n, r in enumerate(rules, 1):
+        dr.line([(L, r["y"]), (R, r["y"])], fill=(0, 160, 255), width=2)
+        dr.text((max(0, L - 40), r["y"] - 14), str(n), fill=(220, 0, 0))
+    for t in (0, 25, 50, 75, 100):
+        x = L + (R - L) * t / 100
+        dr.line([(x, rules[0]["y"] - step), (x, rules[-1]["y"])], fill=(255, 150, 150), width=1)
+    ov.save(os.path.join(out_dir, "lines_overview.png"))
+    print(f'{{"rotation_degrees": {round(float(ang), 2)}, "ruled_lines_found": {len(rules)},')
+    print(' "lines_with_writing": [')
+    w = [l for l in lines if l["spans"]]
+    for i, l in enumerate(w):
+        print("  " + json.dumps(l) + ("," if i < len(w) - 1 else ""))
+    print(" ]}")
+    return 0
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print(__doc__); sys.exit(2)
+    sys.exit(main(sys.argv[1], sys.argv[2]))

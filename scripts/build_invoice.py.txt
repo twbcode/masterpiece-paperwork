@@ -1,0 +1,673 @@
+#!/usr/bin/env python3
+"""
+Masterpiece Construction Experts - Sales Contract -> Final Invoice builder.
+
+Usage:
+  python3 build_invoice.py SALES_CONTRACT INVOICE_TEMPLATE.pdf OUTPUT_DIR [options]
+
+  SALES_CONTRACT may be a PDF or a Word file (.docx/.doc); Word files are converted
+  to PDF with LibreOffice first.
+
+Options (use only when the user asks for them):
+  --no-gaps               drop the blank rows between description sections
+  --gap-before N[,M...]   with --no-gaps, put one blank row before these description
+                          text lines (numbered 1, 2, 3... in contract order)
+  --money-received AMT    relabel "Deposit Received" as "Money Received" and show AMT
+  --amount-due AMT        show AMT as the Balance Due instead of the contract's Final Due
+
+Copies the customer's filled-in text from a completed sales contract onto the
+blank Final Invoice/Receipt template. The contract's own font, wording, line
+breaks, word spacing, indentation, blank rows and underlined prices are kept.
+Fields copied: Customer #, Order #, Name, Address, City/State/Zip, Phone,
+Window(s), Door(s), Patio Door(s), Other, Description, and
+Total -> Contract Amount, Deposit -> Deposit Received, Final Due -> Balance Due.
+The description always starts on the invoice's first ruled line.
+Everything else on the template (all pages) is left untouched; Completion Date
+and Invoice Paid stay blank.
+Output: "<Customer Last Name> Final Invoice.pdf" in OUTPUT_DIR.
+"""
+import sys, os, re, json, subprocess, argparse, tempfile, shutil, glob, io
+
+def need(mod, pkg=None):
+    try:
+        return __import__(mod)
+    except ImportError:
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q",
+                        "--break-system-packages", pkg or mod], check=False)
+        return __import__(mod)
+
+need("pypdf"); need("pdfplumber")
+import pdfplumber
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import (DecodedStreamObject, NameObject, DictionaryObject,
+                           ArrayObject, FloatObject, ContentStream)
+
+# Lines of text sit at least this fraction of their font size above the ruled
+# line, so descenders (g, j, p, y and commas) don't touch it.
+CLEAR = 0.2
+# Description lines: the baseline sits exactly this fraction of the font size above
+# its ruled line - low enough to look written on the line, high enough that the
+# tails of g, j, p, q and y stay just clear of it.
+DESC_GAP = 0.24
+
+class Stop(Exception):
+    pass
+
+# Fonts printed as part of the blank Masterpiece forms. Anything else is fill-in text.
+TEMPLATE_FONT_HINTS = ("calibri", "baguet")
+def is_template_font(name):
+    n = str(name).lower()
+    return any(h in n for h in TEMPLATE_FONT_HINTS)
+
+def money(cents):
+    return f"{cents // 100:,}.{cents % 100:02d}"
+
+def parse_money(s):
+    m = re.search(r"([\d,]+)\.(\d\d)", s)
+    if not m:
+        raise Stop(f"Could not read a dollar amount from '{s}'")
+    return int(m.group(1).replace(",", "")) * 100 + int(m.group(2))
+
+# ------------------------------------------------------------------ reading layout
+def words(page):
+    return page.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False, x_tolerance=1.5)
+
+def find_label(ws, text, region=None, what="form"):
+    parts = text.split(); hits = []
+    for w in ws:
+        if w["text"].strip() != parts[0]:
+            continue
+        cur = dict(w); ok = True
+        for p in parts[1:]:
+            nxt = next((v for v in ws if v["text"].strip() == p and abs(v["top"] - cur["top"]) < 2
+                        and 0 <= v["x0"] - cur["x1"] < 14), None)
+            if nxt is None:
+                ok = False; break
+            cur["x1"] = nxt["x1"]; cur["bottom"] = max(cur["bottom"], nxt["bottom"])
+        if ok:
+            cur["text"] = text; hits.append(cur)
+    if region:
+        x0, t0, x1, t1 = region
+        hits = [h for h in hits if x0 <= h["x0"] <= x1 and t0 <= h["top"] <= t1]
+    if not hits:
+        raise Stop(f"Label '{text}' not found on the {what} - is this the standard Masterpiece {what}?")
+    return sorted(hits, key=lambda h: h["top"])[0]
+
+def hrules(page, minw, maxw):
+    out = []
+    for r in page.rects + page.lines:
+        h = abs(r["bottom"] - r["top"]); w = r["x1"] - r["x0"]
+        if h < 2 and minw <= w <= maxw:
+            out.append({"x0": r["x0"], "x1": r["x1"], "top": r["top"]})
+    out.sort(key=lambda r: (round(r["top"], 1), r["x0"]))
+    ded = []
+    for r in out:
+        if not any(abs(r["top"] - d["top"]) < 1 and abs(r["x0"] - d["x0"]) < 2 for d in ded):
+            ded.append(r)
+    return ded
+
+def vrules(page):
+    out = []
+    for r in page.rects + page.lines:
+        if (r["x1"] - r["x0"]) < 2 and (r["bottom"] - r["top"]) > 6:
+            out.append({"x": (r["x0"] + r["x1"]) / 2, "top": r["top"], "bottom": r["bottom"]})
+    return out
+
+def field_rule(page, label, what):
+    cands = [r for r in hrules(page, 40, 200)
+             if label["x1"] - 2 < r["x0"] < label["x1"] + 80
+             and label["bottom"] - 3 <= r["top"] < label["top"] + 22]
+    if not cands:
+        raise Stop(f"No entry line found next to '{label['text']}' on the {what}.")
+    return min(cands, key=lambda r: (round(r["top"]), r["x0"]))
+
+def cell_divider(page, label, what):
+    mid = (label["top"] + label["bottom"]) / 2
+    c = [v for v in vrules(page) if v["top"] - 1 <= mid <= v["bottom"] + 1 and v["x"] > label["x1"] - 1]
+    if not c:
+        raise Stop(f"Box next to '{label['text']}' not found on the {what}.")
+    return min(c, key=lambda v: v["x"])["x"]
+
+def fill_chars(page):
+    return [c for c in page.chars if not is_template_font(c["fontname"]) and c["text"].strip()]
+
+def bl(c):                     # baseline, PDF (bottom-up) coordinate
+    return c["matrix"][5]
+
+def text_of(chars):
+    sel = sorted(chars, key=lambda c: (round(-bl(c)), c["x0"]))
+    out = ""; last = None
+    for c in sel:
+        if last is not None and c["x0"] - last["x1"] > c["size"] * 0.15:
+            out += " "
+        out += c["text"]; last = c
+    return out.strip()
+
+def bbox(chars, pad=0.8):
+    return (min(c["x0"] for c in chars) - pad, min(c["top"] for c in chars) - pad,
+            max(c["x1"] for c in chars) + pad, max(c["bottom"] for c in chars) + pad)
+
+# ------------------------------------------------------------------ content filtering
+PATH_OPS = {b"m", b"l", b"c", b"v", b"y", b"h", b"re"}
+PAINT_OPS = {b"S", b"s", b"f", b"F", b"f*", b"B", b"B*", b"b", b"b*", b"n"}
+SHOW_OPS = {b"Tj", b"TJ", b"'", b'"'}
+
+def _mul(m, n):
+    a, b, c, d, e, f = m; A, B, C, D, E, F = n
+    return (a*A + b*C, a*B + b*D, c*A + d*C, c*B + d*D, e*A + f*C + E, e*B + f*D + F)
+
+IDENT = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+def trim_run(operands, op, fontobj, fs, tc, tw, th, tm, ctm, box):
+    """Word/LibreOffice contracts put label and value (or leading spaces and value) in one
+    text run that starts outside the field's box. Keep only the glyphs that start inside the
+    box; every other glyph becomes an equal blank advance, so nothing hidden is carried along."""
+    from pypdf.generic import ByteStringObject
+    if fontobj is None or fs == 0:
+        return None
+    f = fontobj.get_object()
+    if f.get("/Subtype") not in ("/TrueType", "/Type1") or "/Widths" not in f:
+        return None
+    first = int(f.get("/FirstChar", 0)); widths = [float(v) for v in f["/Widths"]]
+    fd = f.get("/FontDescriptor"); miss = float(fd.get_object().get("/MissingWidth", 0)) if fd else 0.0
+    items = operands[0] if op == b"TJ" else [operands[0]]
+    a, b, c, d, e, f_ = _mul(tm, ctm)
+    u = 0.0; out = ArrayObject(); keep = False; pend = 0.0; buf = b""
+    def flush():
+        nonlocal buf
+        if buf:
+            out.append(ByteStringObject(buf)); buf = b""
+    for it in items:
+        if isinstance(it, (int, float)) or type(it).__name__ in ("FloatObject", "NumberObject"):
+            u -= float(it) / 1000.0 * fs * th; pend += float(it); continue
+        raw = it.original_bytes if hasattr(it, "original_bytes") else bytes(it)
+        for ch in raw:
+            w0 = widths[ch - first] if 0 <= ch - first < len(widths) else miss
+            adv = (w0 / 1000.0 * fs + tc + (tw if ch == 32 else 0.0)) * th
+            gx = a * u + e
+            if box[0] - 2 <= gx <= box[2] + 2:
+                if pend:
+                    flush(); out.append(FloatObject(round(pend, 4))); pend = 0.0
+                buf += bytes([ch]); keep = keep or ch != 32
+            else:
+                flush(); pend += -adv / (fs * th) * 1000.0
+            u += adv
+    flush()
+    if pend:
+        out.append(FloatObject(round(pend, 4)))
+    return out if keep else None
+
+def filtered(content, resources, reader, w, memo, box, tag, ctm=IDENT):
+    """Return (bytes, resources) for a copy of `content` that keeps only the
+    fill-in text whose starting point lies inside `box` (x0, y0, x1, y1 in the
+    contract page's PDF coordinates). Template-font text, images and all drawn
+    lines/boxes are removed, so nothing hidden is carried along. Nested form
+    XObjects are filtered the same way."""
+    resources = resources.get_object() if resources is not None else DictionaryObject()
+    fonts = resources.get("/Font", DictionaryObject())
+    fonts = fonts.get_object() if fonts is not None else DictionaryObject()
+    basefont = {k: str(v.get_object().get("/BaseFont", "")) for k, v in fonts.items()}
+    xobjs = resources.get("/XObject")
+    xobjs = xobjs.get_object() if xobjs is not None else DictionaryObject()
+    new_x = DictionaryObject()
+    cs = ContentStream(content, reader)
+    out = []; pending = []; clip = False; font = None; stack = []
+    tm = tlm = IDENT; tl = 0.0; fsize = 0.0; tc = 0.0; tw_ = 0.0; th = 1.0
+    def inside(x, y):
+        return box[0] - 2 <= x <= box[2] + 2 and box[1] <= y <= box[3]
+    for operands, op in cs.operations:
+        if op in PATH_OPS:
+            pending.append((operands, op)); continue
+        if op in (b"W", b"W*"):
+            clip = True; pending.append((operands, op)); continue
+        if op in PAINT_OPS:
+            if clip or op == b"n":               # keep clipping, never paint
+                out.extend(pending); out.append(([], b"n"))
+            pending = []; clip = False; continue
+        if op == b"INLINE IMAGE":
+            continue
+        if op == b"Do":
+            name = operands[0]
+            xo = xobjs.get(name)
+            if xo is None:
+                continue
+            ref = xobjs.raw_get(name)
+            xo = xo.get_object()
+            if xo.get("/Subtype") != "/Form":
+                continue                         # images (logo etc.) dropped
+            fm = tuple(float(v) for v in xo.get("/Matrix", [1, 0, 0, 1, 0, 0]))
+            key = (getattr(ref, "idnum", id(xo)), tag, tuple(round(v, 3) for v in ctm))
+            if key not in memo:
+                data, res = filtered(xo, xo.get("/Resources"), reader, w, memo, box, tag, _mul(fm, ctm))
+                s = DecodedStreamObject(); s.set_data(data)
+                s[NameObject("/Type")] = NameObject("/XObject")
+                s[NameObject("/Subtype")] = NameObject("/Form")
+                s[NameObject("/BBox")] = xo["/BBox"].clone(w)
+                if "/Matrix" in xo:
+                    s[NameObject("/Matrix")] = xo["/Matrix"].clone(w)
+                s[NameObject("/Resources")] = res
+                memo[key] = w._add_object(s)
+            new_x[NameObject(name)] = memo[key]
+            out.append((operands, op)); continue
+        if op == b"q":
+            stack.append((font, ctm))
+        elif op == b"Q":
+            if stack:
+                font, ctm = stack.pop()
+        elif op == b"cm":
+            ctm = _mul(tuple(float(v) for v in operands), ctm)
+        elif op == b"BT":
+            tm = tlm = IDENT
+        elif op == b"Tm":
+            tm = tlm = tuple(float(v) for v in operands)
+        elif op in (b"Td", b"TD"):
+            if op == b"TD":
+                tl = -float(operands[1])
+            tlm = _mul((1, 0, 0, 1, float(operands[0]), float(operands[1])), tlm); tm = tlm
+        elif op == b"TL":
+            tl = float(operands[0])
+        elif op == b"T*":
+            tlm = _mul((1, 0, 0, 1, 0, -tl), tlm); tm = tlm
+        elif op == b"Tf":
+            font = str(operands[0]); fsize = float(operands[1])
+        elif op == b"Tc":
+            tc = float(operands[0])
+        elif op == b"Tw":
+            tw_ = float(operands[0])
+        elif op == b"Tz":
+            th = float(operands[0]) / 100.0
+        if op in SHOW_OPS:
+            if op in (b"'", b'"'):
+                tlm = _mul((1, 0, 0, 1, 0, -tl), tlm); tm = tlm
+            a, b, c, d, e, f = ctm
+            x = a * tm[4] + c * tm[5] + e; y = b * tm[4] + d * tm[5] + f
+            if (op in (b"Tj", b"TJ") and font is not None and not is_template_font(basefont.get(font, ""))
+                    and not inside(x, y) and box[1] <= y <= box[3]):
+                trimmed = trim_run(operands, op, fonts.get(font), fsize, tc, tw_, th, tm, ctm, box)
+                if trimmed is not None:
+                    out.append(([trimmed], b"TJ"))
+                continue
+            if (font is not None and is_template_font(basefont.get(font, ""))) or not inside(x, y):
+                if op == b"'":
+                    out.append(([], b"T*"))
+                elif op == b'"':
+                    out.append(([operands[0]], b"Tw")); out.append(([operands[1]], b"Tc")); out.append(([], b"T*"))
+                continue
+        out.append((operands, op))
+    cs.operations = out
+    res = DictionaryObject()
+    for k in ("/Font", "/ExtGState", "/ColorSpace", "/Pattern", "/Shading", "/Properties"):
+        if k in resources:
+            res[NameObject(k)] = resources.raw_get(k).clone(w)
+    res[NameObject("/XObject")] = new_x
+    return cs.get_data(), res
+
+def _tounicode(fobj):
+    tu = fobj.get("/ToUnicode")
+    if tu is None:
+        return {}
+    data = tu.get_object().get_data().decode("latin1"); m = {}
+    for blk in re.findall(r"beginbfchar(.*?)endbfchar", data, re.S):
+        for a, b in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>", blk):
+            m[a] = chr(int(b[:4], 16))
+    for blk in re.findall(r"beginbfrange(.*?)endbfrange", data, re.S):
+        for a, b, c in re.findall(r"<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>\s*<([0-9A-Fa-f]+)>", blk):
+            for i in range(int(a, 16), int(b, 16) + 1):
+                m[f"{i:0{len(a)}X}"] = chr(int(c[:4], 16) + i - int(a, 16))
+    return m
+
+def encode_in_contract_font(page, fontname, txt):
+    """Find the contract's font by name and encode txt with it, so an override amount
+    is set in the same font as the contract's own amounts."""
+    def fonts_in(res, seen):
+        res = res.get_object() if res is not None else {}
+        for k, v in (res.get("/Font") or {}).items():
+            yield res["/Font"].raw_get(k) if hasattr(res["/Font"], "raw_get") else v
+        for k, v in (res.get("/XObject") or {}).items():
+            xo = v.get_object()
+            if xo.get("/Subtype") == "/Form" and id(xo) not in seen:
+                seen.add(id(xo)); yield from fonts_in(xo.get("/Resources"), seen)
+    for ref in fonts_in(page.get("/Resources"), set()):
+        f = ref.get_object()
+        if str(f.get("/BaseFont", "")).lstrip("/") != str(fontname).lstrip("/"):
+            continue
+        rev = {u: code for code, u in _tounicode(f).items()}
+        if all(ch in rev for ch in txt):
+            return ref, b"".join(bytes.fromhex(rev[ch]) for ch in txt)
+    raise Stop(f"The contract's amount font doesn't contain all the characters of '{txt}'.")
+
+def relabel_money_received(w, tpl_path):
+    """Turn the template's 'Deposit Received' into 'Money Received'. 'Received  $' stay the
+    template's own Calibri glyphs ('$' unmoved); 'Money' is set in Carlito, Calibri's metric
+    twin, because the template's embedded Calibri subset has no capital M."""
+    OLD = (rb"[ (\000\017\000I) 0.791 (\000d\000\135\000h\000Q\000j\000\003\000\056) 18 (\000I) 0.791 "
+           rb"(\000E\000I) 0.798 (\000Q\000p) 10.425 (\000I) 0.791 (\000G\000\003) -1355.396 "
+           rb"(\000\003\000\271) 0.525 (\000\003) ] TJ")
+    need("reportlab")
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    cand = glob.glob("/usr/share/fonts/**/Carlito-Regular.ttf", recursive=True)
+    if not cand and shutil.which("fc-match"):
+        p = subprocess.run(["fc-match", "-f", "%{file}", "Carlito:style=Regular"], capture_output=True, text=True).stdout
+        if "carlito" in p.lower():
+            cand = [p]
+    if not cand:
+        raise Stop("The Carlito font (needed to write 'Money Received') isn't installed here.")
+    tdesc = PdfReader(tpl_path).pages[0]["/Resources"]["/Font"]["/C2_1"].get_object()["/DescendantFonts"][0].get_object()
+    W = {}; arr = list(tdesc["/W"]); i = 0
+    while i < len(arr):
+        a0 = int(arr[i])
+        if hasattr(arr[i + 1], "__iter__"):
+            for k, v in enumerate(arr[i + 1]): W[a0 + k] = float(v)
+            i += 2
+        else:
+            for g in range(a0, int(arr[i + 1]) + 1): W[g] = float(arr[i + 2])
+            i += 3
+    wd = lambda gs: sum(W[g] for g in gs)
+    D, e, p_, o, s_, i_, t_, sp, R, c, v, d = 15, 73, 100, 93, 104, 81, 106, 3, 46, 69, 112, 71
+    orig = wd([D, e, p_, o, s_, i_, t_, sp, R, e, c, e, i_, v, e, d, sp]) - (0.791 + 18 + 0.791 + 0.798 + 10.425 + 0.791 - 1355.396)
+    pdfmetrics.registerFont(TTFont("Carlito", cand[0]))
+    FS = 11.0
+    w_money = pdfmetrics.stringWidth("Money", "Carlito", FS) / FS * 1000
+    X = w_money + wd([sp, R, e, c, e, i_, v, e, d, sp]) - (18 + 0.791 + 0.798 + 10.425 + 0.791) - orig
+    NEW = (f"[ {-w_money:.3f} ".encode() + rb"(\000\003\000\056) 18 (\000I) 0.791 (\000E\000I) 0.798 (\000Q\000p) 10.425 "
+           rb"(\000I) 0.791 (\000G\000\003) " + f"{X:.3f}".encode() + rb" (\000\003\000\271) 0.525 (\000\003) ] TJ")
+    pg = w.pages[0]
+    data = pg.get_contents().get_data()
+    if data.count(OLD) != 1:
+        raise Stop("Couldn't find the 'Deposit Received' label on the invoice template to change it.")
+    cs = DecodedStreamObject(); cs.set_data(data.replace(OLD, NEW))
+    pg[NameObject("/Contents")] = w._add_object(cs)
+    buf = io.BytesIO()
+    cv = canvas.Canvas(buf, pagesize=(float(pg.mediabox.width), float(pg.mediabox.height)))
+    cv.setFillColorRGB(0, 0, 0); cv.setFont("Carlito", FS)
+    cv.drawString(72.0, 218.66, "Money")
+    cv.save()
+    pg.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
+
+# ------------------------------------------------------------------ main build
+LEFT = ["Name:", "Address:", "City/State/Zip:", "Phone:"]
+RIGHT = ["Window(s):", "Door(s):", "Patio Door(s):", "Other:"]
+AMOUNTS = [("Total", "Contract Amount"), ("Deposit", "Deposit Received"), ("Final Due", "Balance Due")]
+
+def to_pdf(path):
+    """Word contracts are converted to PDF with LibreOffice; PDFs are used as they are."""
+    if os.path.splitext(path)[1].lower() not in (".docx", ".doc", ".odt", ".rtf"):
+        return path
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if not soffice:
+        raise Stop("The sales contract is a Word file and LibreOffice isn't available to convert it. "
+                   "Please attach the contract as a PDF.")
+    tmp = tempfile.mkdtemp(prefix="mpc_contract_")
+    subprocess.run([soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, path],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=180)
+    out = glob.glob(os.path.join(tmp, "*.pdf"))
+    if not out:
+        raise Stop("Couldn't convert the Word contract to PDF. Please attach the contract as a PDF.")
+    return out[0]
+
+def build(con_path, tpl_path, out_dir, no_gaps=False, gap_before=(), money_received=None, amount_due=None):
+    con_path = to_pdf(con_path)
+    con_r = PdfReader(con_path); cp = con_r.pages[0]
+    w = PdfWriter(clone_from=tpl_path); ip = w.pages[0]
+    if len(w.pages) > 1:
+        raise Stop("This is the old two-page Final Invoice template. Please attach the current one-page "
+                   "template (17 description lines, warranty line at the bottom of the page).")
+    report = {"warnings": []}
+    texts = []          # override amounts: (font name on contract, size, text, x, baseline) in invoice PDF coords
+    moves = []          # (clip box in contract top-down coords, dx, dy_pdf)
+    lines = []          # underlines to draw on the invoice: (x0, top, x1, thickness)
+
+    with pdfplumber.open(con_path) as cd, pdfplumber.open(tpl_path) as td:
+        C = cd.pages[0]; T = td.pages[0]
+        CH = float(C.height)
+        cw, tw = words(C), words(T)
+        if not any("Sales" == x["text"] for x in cw if x["top"] < 60):
+            report["warnings"].append("The first PDF doesn't say 'Sales Contract' at the top - check the right files were used.")
+        fc = fill_chars(C)
+        if not fc:
+            raise Stop("No filled-in text found on the sales contract.")
+        # Hidden, stacked copies of text (left by an older version of the sales
+        # contract skill) would be copied too, so refuse those files.
+        seen = {}
+        dup = 0
+        for c in fc:
+            k = (c["text"], round(c["x0"]), round(c["top"]))
+            if k in seen and abs(seen[k]["x0"] - c["x0"]) < 0.3 and abs(seen[k]["top"] - c["top"]) < 0.3:
+                dup += 1
+            seen[k] = c
+        if dup > 5:
+            raise Stop("This sales contract contains hidden duplicate text, which happens with contracts made "
+                       "by the first version of the sales contract skill or prompt. Re-create the contract with the "
+                       "updated sales contract skill or prompt, then make the invoice from that.")
+        used = set()
+        def take(chars):
+            for c in chars: used.add(id(c))
+
+        # --- Customer # / Order #
+        ids = {}
+        for lab in ("Customer #", "Order #"):
+            cl = find_label(cw, lab, what="sales contract"); tl = find_label(tw, lab, what="invoice template")
+            cdiv = cell_divider(C, cl, "sales contract"); tdiv = cell_divider(T, tl, "invoice template")
+            cl_bl = CH - cl["bottom"]; tl_bl = float(T.height) - tl["bottom"]
+            ch = [c for c in fc if c["x0"] > cdiv - 1 and c["x1"] < cdiv + 120
+                  and cl["top"] - 4 < c["top"] < cl["bottom"] + 1 and id(c) not in used]
+            ids[lab] = text_of(ch)
+            if not ch:
+                report["warnings"].append(f"'{lab}' is blank on the sales contract.")
+                continue
+            take(ch)
+            moves.append((bbox(ch), tdiv - cdiv, (tl_bl - cl_bl) - (float(T.height) - CH)))
+        report["customer_no"] = ids.get("Customer #", ""); report["order_no"] = ids.get("Order #", "")
+
+        # --- header fields
+        fields = {}
+        for lab in LEFT + RIGHT:
+            cl = find_label(cw, lab, what="sales contract"); tl = find_label(tw, lab, what="invoice template")
+            cr = field_rule(C, cl, "sales contract"); tr = field_rule(T, tl, "invoice template")
+            ch = [c for c in fc if cr["x0"] - 8 <= c["x0"] and c["x1"] <= cr["x1"] + 40
+                  and cr["top"] - 7 <= CH - bl(c) <= cr["top"] + 3 and id(c) not in used]
+            fields[lab] = text_of(ch)
+            if ch:
+                take(ch)
+                dy_ = cr["top"] - tr["top"]
+                b0 = max(CH - bl(c) for c in ch)
+                gap = CLEAR * max(c["size"] for c in ch)
+                if tr["top"] - (b0 - dy_) < gap:      # keep descenders clear of the line
+                    dy_ = b0 - tr["top"] + gap
+                moves.append((bbox(ch), tr["x0"] - cr["x0"], dy_))
+        report["fields"] = fields
+        name = fields["Name:"]
+        if not name:
+            raise Stop("Customer name is blank on the sales contract.")
+        last = re.sub(r"[^\w\-' ]", "", name).split()[-1]
+
+        # --- description
+        cdl = find_label(cw, "Description:", what="sales contract")
+        tdl = find_label(tw, "Description:", what="invoice template")
+        terms = find_label(cw, "Terms:", what="sales contract")
+        crs = [r for r in hrules(C, 400, 600) if cdl["bottom"] < r["top"] < terms["top"]]
+        trs = [r for r in hrules(T, 400, 600) if r["top"] > tdl["bottom"]]
+        tpl_bottom = min([x["top"] for x in tw if x["text"] in ("Contract",) and x["top"] > tdl["top"]] or [9999])
+        trs = [r for r in trs if r["top"] < tpl_bottom]
+        if not crs or not trs:
+            raise Stop("Couldn't find the description lines on one of the forms.")
+        desc = [c for c in fc if cdl["bottom"] - 1 < c["top"] and c["bottom"] < terms["top"] and id(c) not in used]
+        rows = []
+        for c in sorted(desc, key=lambda c: -bl(c)):
+            if rows and abs(rows[-1]["bl"] - bl(c)) < 2:
+                rows[-1]["chars"].append(c)
+            else:
+                rows.append({"bl": bl(c), "chars": [c]})
+        dx = trs[0]["x0"] - crs[0]["x0"]
+        for r in rows:
+            b = CH - r["bl"]
+            idx = next((k for k, cr in enumerate(crs) if cr["top"] >= b - 2.5), None)
+            if idx is None:
+                raise Stop(f"Description line '{text_of(r['chars'])[:40]}' is below the contract's lines.")
+            r["idx"] = idx
+        for i in range(1, len(rows)):
+            if rows[i]["idx"] <= rows[i - 1]["idx"]:
+                rows[i]["idx"] = rows[i - 1]["idx"] + 1
+        if no_gaps:                              # drop blank rows between sections
+            before = {int(v) - 1 for v in gap_before}
+            extra = 0
+            for k, r in enumerate(rows):
+                if k in before and k > 0: extra += 1
+                r["idx"] = k + extra
+        if rows and rows[0]["idx"] > 0:          # start the description on the invoice's first line
+            shift = rows[0]["idx"]
+            for r in rows:
+                r["idx"] -= shift
+        if rows and rows[-1]["idx"] >= len(trs):
+            raise Stop(f"The description uses {rows[-1]['idx'] + 1} lines but the invoice only has {len(trs)}"
+                       f" ({len(rows)} lines of text plus {rows[-1]['idx'] + 1 - len(rows)} blank lines between sections).")
+        for i, r in enumerate(rows):
+            x0, t0, x1, t1 = bbox(r["chars"])
+            if i > 0:
+                t0 = max(t0, max(c["bottom"] for c in rows[i - 1]["chars"]) + 0.05) if x0 < bbox(rows[i-1]["chars"])[2] else t0
+            if i + 1 < len(rows):
+                t1 = min(t1, min(c["top"] for c in rows[i + 1]["chars"]) - 0.05) if x0 < bbox(rows[i+1]["chars"])[2] else t1
+            # Seat every description line the same distance above its ruled line
+            # (close to it, descenders just clear), whatever height it had on the contract.
+            b0 = CH - r["bl"]
+            gap = DESC_GAP * max(c["size"] for c in r["chars"])
+            r["dy"] = b0 - trs[r["idx"]]["top"] + gap
+            moves.append(((x0, t0, x1, t1), dx, r["dy"]))
+        report["description_lines"] = [{"invoice_line": r["idx"] + 1, "text": text_of(r["chars"])} for r in rows]
+
+        # short underlines under prices inside the description
+        rule_tops = [r["top"] for r in crs]
+        for o in C.rects + C.lines:
+            h = abs(o["bottom"] - o["top"]); wd = o["x1"] - o["x0"]
+            if h < 1.5 and 10 < wd < 120 and cdl["bottom"] < o["top"] < terms["top"] \
+               and crs[0]["x0"] - 2 < o["x0"] and o["x1"] < crs[0]["x1"] + 2:
+                near = [r for r in rows if 0 < o["top"] - (CH - r["bl"]) < 5]
+                if near:
+                    dy = near[0]["dy"]
+                else:
+                    k = min(range(len(crs)), key=lambda k: abs(crs[k]["top"] - o["top"]))
+                    dy = crs[k]["top"] - trs[min(k, len(trs) - 1)]["top"]
+                lines.append((o["x0"] + dx, o["top"] - dy, o["x1"] + dx, max(h, 0.5)))
+
+        # --- money
+        amounts = {}
+        for clab, tlab in AMOUNTS:
+            cl = find_label(cw, clab, (300, terms["top"], 612, terms["top"] + 90), "sales contract")
+            tl = find_label(tw, tlab, what="invoice template")
+            cd_ = [c for c in C.chars if c["text"] == "$" and abs(c["top"] - cl["top"]) < 4 and c["x0"] > cl["x0"]]
+            td_ = [c for c in T.chars if c["text"] == "$" and abs(c["top"] - tl["top"]) < 4 and c["x0"] > tl["x0"]]
+            if not td_:
+                raise Stop(f"'$' after '{tlab}' not found on the invoice template.")
+            ref_x = cd_[0]["x1"] if cd_ else cl["x1"]
+            ch = [c for c in fc if abs(c["top"] - cl["top"]) < 7 and c["x0"] > ref_x - 1 and id(c) not in used]
+            if not ch:
+                raise Stop(f"No amount found next to '{clab}' on the sales contract.")
+            take(ch)
+            amounts[tlab] = parse_money(text_of(ch))
+            first = min(ch, key=lambda c: c["x0"])
+            TH = float(T.height)
+            target_bl = bl(td_[0])                       # PDF coords, on the template's "$"
+            # the amount's entry line (drawn as a thin line or a thin image under the "$")
+            ax = td_[0]["x1"] + 6
+            under = [o["top"] for o in list(T.images) + T.rects + T.lines
+                     if (o["bottom"] - o["top"]) < 2 and o["x0"] - 3 <= ax <= o["x1"]
+                     and -1 < o["top"] - (TH - target_bl) < 6]
+            if under:                                    # keep descenders clear of that line
+                gap = CLEAR * max(c["size"] for c in ch)
+                target_bl = max(target_bl, TH - min(under) + gap)
+            override = {"Deposit Received": money_received, "Balance Due": amount_due}.get(tlab)
+            if override is not None:
+                amounts[tlab] = parse_money(override)
+                texts.append((first["fontname"], first["size"], money(amounts[tlab]),
+                              td_[0]["x1"] + 3.0, target_bl - (TH - CH) + (TH - CH)))
+            else:
+                moves.append((bbox(ch), td_[0]["x1"] + 3.0 - first["x0"], (target_bl - bl(first)) - (TH - CH)))
+        a, d, f = amounts["Contract Amount"], amounts["Deposit Received"], amounts["Balance Due"]
+        if money_received is None and amount_due is None:
+            if d + f != a:
+                report["warnings"].append(f"On the sales contract, Deposit (${money(d)}) + Final Due (${money(f)}) "
+                                          f"doesn't equal Total (${money(a)}). Amounts were copied as written.")
+            report.update(contract_amount=money(a), deposit_received=money(d), balance_due=money(f))
+        else:
+            if d + f != a:
+                report["warnings"].append(f"Received (${money(d)}) + Balance Due (${money(f)}) "
+                                          f"doesn't equal the Contract Amount (${money(a)}).")
+            report.update(contract_amount=money(a), balance_due=money(f))
+            report["money_received" if money_received is not None else "deposit_received"] = money(d)
+        top_of_form = min(c["top"] for c in cw if c["text"] == "Customer") - 5
+        # Word contracts print the form's own labels in the same font as the filled-in text; ignore those.
+        LABEL_WORDS = {"Customer", "#", "Order", "Name:", "Address:", "City/State/Zip:", "Phone:", "Window(s):",
+                       "Door(s):", "Patio", "Other:", "Description:", "Terms:", "Paid", "in", "Full", "X",
+                       "Deposit/Balance", "Due", "Upon", "Completion", "Total", "Deposit", "Final", "$", "_"}
+        label_boxes = [x for x in cw if x["text"].strip("_") in LABEL_WORDS or set(x["text"]) <= {"_"}]
+        def on_label(c):
+            return any(b["x0"] - 0.5 <= c["x0"] and c["x1"] <= b["x1"] + 0.5 and abs(b["top"] - c["top"]) < 1.5
+                       for b in label_boxes)
+        leftover = [c for c in fc if id(c) not in used and top_of_form < c["top"] < terms["top"] + 80
+                    and c not in desc and not on_label(c)]
+        if leftover:
+            report["warnings"].append("Some filled-in text on the contract wasn't copied: '" + text_of(leftover)[:60] + "'")
+
+    # ------------------------------------------------------------------ assemble
+    ipres = ip["/Resources"].get_object()
+    if "/XObject" not in ipres:
+        ipres[NameObject("/XObject")] = DictionaryObject()
+    ixo = ipres["/XObject"].get_object()
+    IH = float(ip.mediabox.height)
+    memo = {}; ops = []
+    for k, ((x0, t0, x1, t1), dx_, dy_) in enumerate(moves):
+        data, res = filtered(cp.get_contents(), cp.get("/Resources"), con_r, w, memo,
+                             (x0, CH - t1, x1, CH - t0), k)
+        s = DecodedStreamObject(); s.set_data(data)
+        s.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Form"),
+                  NameObject("/BBox"): ArrayObject([FloatObject(v) for v in cp.mediabox]),
+                  NameObject("/Resources"): res})
+        name = f"/MPCFill{k}"
+        ixo[NameObject(name)] = w._add_object(s)
+        # contract top-down -> PDF coords; dy_ is a top-down shift (positive = move up)
+        ops.append(f"q 1 0 0 1 {dx_:.3f} {dy_ + (IH - CH):.3f} cm {x0:.3f} {CH - t1:.3f} "
+                   f"{x1 - x0:.3f} {t1 - t0:.3f} re W n {name} Do Q")
+    for x0, top, x1, h in lines:
+        ops.append(f"q 0 g {x0:.3f} {IH - top - h:.3f} {x1 - x0:.3f} {h:.3f} re f Q")
+    for k, (fontname, size, txt, x, y) in enumerate(texts):
+        fref, codes = encode_in_contract_font(cp, fontname, txt)
+        s = DecodedStreamObject()
+        s.set_data(f"BT /MPCF {size:.3f} Tf 0 g 1 0 0 1 {x:.3f} {y:.3f} Tm <{codes.hex()}> Tj ET".encode())
+        s.update({NameObject("/Type"): NameObject("/XObject"), NameObject("/Subtype"): NameObject("/Form"),
+                  NameObject("/BBox"): ArrayObject([FloatObject(v) for v in ip.mediabox]),
+                  NameObject("/Resources"): DictionaryObject({NameObject("/Font"): DictionaryObject(
+                      {NameObject("/MPCF"): fref.clone(w)})})})
+        name = f"/MPCAmt{k}"
+        ixo[NameObject(name)] = w._add_object(s)
+        ops.append(f"q {name} Do Q")
+    old = ip.get_contents().get_data()
+    cs = DecodedStreamObject(); cs.set_data(b"q\n" + old + b"\nQ\n" + "\n".join(ops).encode())
+    ip[NameObject("/Contents")] = w._add_object(cs)
+    if money_received is not None:
+        relabel_money_received(w, tpl_path)
+
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, f"{last} Final Invoice.pdf")
+    with open(out, "wb") as fh:
+        w.write(fh)
+    report["output"] = out
+    report["pages"] = len(w.pages)
+    return report
+
+if __name__ == "__main__":
+    ap = argparse.ArgumentParser(usage=__doc__)
+    ap.add_argument("contract"); ap.add_argument("template"); ap.add_argument("out_dir")
+    ap.add_argument("--no-gaps", action="store_true")
+    ap.add_argument("--gap-before", default="")
+    ap.add_argument("--money-received"); ap.add_argument("--amount-due")
+    a = ap.parse_args()
+    try:
+        if a.gap_before and not a.no_gaps:
+            raise Stop("--gap-before only works together with --no-gaps.")
+        gaps = [int(x) for x in a.gap_before.replace(" ", "").split(",") if x]
+        print(json.dumps(build(a.contract, a.template, a.out_dir, a.no_gaps, gaps,
+                               a.money_received, a.amount_due), indent=2))
+    except Stop as e:
+        print(json.dumps({"error": str(e)}, indent=2)); sys.exit(1)
