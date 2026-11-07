@@ -1217,10 +1217,15 @@ const MIC = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke=
 const READER_MODEL = "claude-sonnet-5-5";
 const KEY_STORE = "mpc-reader-key";
 const readerKey = () => (lsGet(KEY_STORE) || "").trim();
-let sampleP = null;
+let sampleP = null, sampleWhy = "";
 const sampleCap = () => {
   if (!inArtifact) return Promise.resolve(null);
-  if (!sampleP) sampleP = window.claude.use("sample").then(async (s) => { if (!s) return null; const l = await s.limits().catch(() => null); return l && l.images ? s : null; }).catch(() => null);
+  if (!sampleP) sampleP = window.claude.use("sample").then(async (s) => {
+    if (!s) { sampleWhy = "Claude isn't available in this view. Open the preview in the Claude app or at claude.ai, signed in."; return null; }
+    const l = await s.limits().catch(() => null);
+    if (!l || !l.images) { sampleWhy = "This view can't send photos to Claude. Try the preview at claude.ai in Safari or Chrome."; return null; }
+    return s;
+  }).catch(() => { sampleWhy = "Claude couldn't be reached from this view."; return null; });
   return sampleP;
 };
 async function readerAvailable() { return inArtifact ? !!(await sampleCap()) : !!readerKey(); }
@@ -1303,7 +1308,7 @@ async function readHandwriting(bytes, type) {
   const jpeg = await photoToJpeg(bytes, type);
   if (inArtifact) {
     const s = await sampleCap();
-    if (!s) throw new Error("Reading handwriting isn't available in this view.");
+    if (!s) { sampleP = null; throw new Error(sampleWhy || "Reading handwriting isn't available in this view."); }
     try { const r = await s(READER_PROMPT, { images: [jpeg], modelTier: "default", cache: false }); return parseReading(r.text); }
     catch (e) {
       if (e && e.code === "not_granted") throw new Error("Claude wasn't allowed to read the photo. Try again and choose Allow.");
@@ -1380,7 +1385,7 @@ async function viewEditor() {
       holder.appendChild(img);
     };
     let shown = null;                              // the photo on screen: { bytes, type }
-    const canRead = mode !== "contract" && await readerAvailable();
+    const canRead = mode !== "contract";
     pc.innerHTML = '<div class="photo" id="photo-view" hidden></div>' +
       (canRead ? '<div class="reader" id="reader" hidden><button class="btn btn-primary" type="button" id="read-btn">Read the handwriting</button>' +
         '<span class="hint">Fills in the form from the photo. Check it against the photo before saving.</span><div id="read-msg" aria-live="polite"></div></div>' : "") +
