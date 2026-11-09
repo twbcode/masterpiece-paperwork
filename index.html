@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.4";
+const APP_VERSION = "1.0.5";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -565,10 +565,13 @@ async function formsMissing() { const out = []; for (const k of ["estimate", "co
 async function saveForm(kind, f) {
   const info = FORM_INFO[kind];
   if (!isPdf(f)) throw new Error("That isn't a PDF.");
-  const bytes = new Uint8Array(await f.arrayBuffer());
+  let bytes;
+  try { bytes = new Uint8Array(await f.arrayBuffer()); }
+  catch (e) { throw new Error("That file couldn't be opened (" + (e && e.name) + "). If it's in an email, a zipped folder or OneDrive online only, save a copy to the Desktop first, then add it from there."); }
   const t = await pdfText(bytes);
   if (t !== null && !info.must.test(t)) throw new Error("That doesn't look like the blank " + info.title + " form. Nothing was changed.");
-  await writeBytes(await Store.root.getDirectoryHandle(FORMS_DIR, { create: true }), info.file, bytes);
+  try { await writeBytes(await Store.root.getDirectoryHandle(FORMS_DIR, { create: true }), info.file, bytes); }
+  catch (e) { const err = new Error("The program couldn't save into the folder you chose (" + (e && e.name) + "). Choose a different folder, like the Desktop, and try again."); err.folder = true; throw err; }
 }
 /* after the folder is open: ask for the blank forms the first time, otherwise show the jobs */
 async function enterApp() { try { await loadJobs(); } catch (e) { console.error(e); } go((await formsMissing()).length ? "forms" : "home"); }
@@ -873,7 +876,13 @@ async function viewForms() {
     (all ? "" : '<p class="why">Add all three to continue.</p>') + '</div></div>';
   $$("[data-add]").forEach(b => b.addEventListener("click", async () => {
     const f = await pickFile("application/pdf,.pdf"); if (!f) return;
-    try { await saveForm(b.dataset.add, f); } catch (e) { return showError(e); }
+    try { await saveForm(b.dataset.add, f); }
+    catch (e) {
+      if (!e.folder) return showError(e);
+      const v = await ask({ title: "That didn't work", text: e.message, buttons: [{ label: "Cancel", value: false }, { label: "Choose a different folder", value: true, kind: "btn-primary" }] });
+      if (v) { try { await chooseFolder(); } catch (_) { return; } return enterApp(); }
+      return;
+    }
     viewForms();
   }));
   $("#cont").addEventListener("click", () => go("home"));
