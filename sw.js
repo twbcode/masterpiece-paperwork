@@ -1,6 +1,6 @@
 // Offline support: keeps a copy of the program so it opens without internet.
 // A new version (new cache name) replaces the old copy the next time the program is opened online.
-const CACHE = "mpc-paperwork-1.0.5";
+const CACHE = "mpc-paperwork-1.0.6";
 const FILES = [
  "./",
  "index.html",

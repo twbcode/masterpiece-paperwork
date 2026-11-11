@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.5";
+const APP_VERSION = "1.0.6";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -727,8 +727,16 @@ function upgradeDetails(d) {
   if (!out.items.length) out.items.push({ text: "", price: "" });
   return out;
 }
-const parseMoney = (s) => { const t = String(s || "").replace(/[$,\s]/g, ""); if (!t) return null; if (!/^\d+(\.\d{1,2})?$/.test(t)) return NaN; return Math.round(parseFloat(t) * 100); };
-const money = (c) => (c / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/* "1,234.56", "$1,234.56", and deductions like "-102.32", "-$102.32" or "(102.32)" → cents (negative for a deduction) */
+const parseMoney = (s) => {
+  let t = String(s || "").replace(/[$,\s]/g, "").replace(/^[\u2212\u2013\u2014]/, "-"); if (!t) return null;
+  let neg = false;
+  if (/^\(.*\)$/.test(t)) { neg = true; t = t.slice(1, -1); }
+  if (t[0] === "-") { neg = true; t = t.slice(1); }
+  if (!/^\d+(\.\d{1,2})?$/.test(t)) return NaN;
+  const c = Math.round(parseFloat(t) * 100); return neg ? -c : c;
+};
+const money = (c) => (c < 0 ? "-" : "") + (Math.abs(c) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const itemsSum = (det) => det.items.map(i => parseMoney(i.price)).filter(c => c !== null && !isNaN(c)).reduce((a, b) => a + b, 0);
 const HEAD_KEYS = ["name", "address", "city_state_zip", "phone", "windows", "doors", "patio_doors", "other", "date"];
 /* Lay the items out the way the office approved: description, one blank line, the price
@@ -747,7 +755,7 @@ function toTranscription(det, level) {
     if (pc !== null && isNaN(pc)) throw new BuildError('The price "' + it.price + '" isn\'t a dollar amount. Type it like 2,307.79.');
     if (!text && pc === null) continue;
     if (text) desc.push({ line: L, items: [{ at: 0, text }] });
-    if (pc !== null) { if (text) L += gapP; desc.push({ line: L, items: [{ at: 76.5, text: "$" + money(pc), underline: true }] }); }
+    if (pc !== null) { if (text) L += gapP; desc.push({ line: L, items: [{ at: 76.5, text: (pc < 0 ? "-$" + money(-pc) : "$" + money(pc)), underline: true }] }); }
     L += gapN;
   }
   d.description = desc;
@@ -1026,6 +1034,8 @@ Rules:
   - An option line like "* FC770-ADVS … Paintable or stainable  $4,217.90" is one item: its words in text, the amount in price.
   - If a section has a breakdown (Materials, Labor, Credit card fee) and a section total, put the breakdown in the text as written with amounts typed like "$1,087.09", and the section total in price.
   - Keep a leading "*" or "★" as "*".
+  - A discount or credit written with a minus sign (like "5% veteran discount  -102.32") is its own item with the minus kept in price: "-102.32".
+  - A price written alone on a line with no words (like a subtotal above a discount) is its own item with text "".
 - Leave out notes written outside the form's boxes and description area (like "Send specs no pricing" in a top corner); list them in notes_left_out.
 - unsure: list every word or number you could not read with confidence, exactly as you typed it, so the office can check it. Customer names and street names always go here unless they are perfectly clear.
 
