@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.6";
+const APP_VERSION = "1.0.7";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -748,15 +748,24 @@ function toTranscription(det, level) {
   for (const k of HEAD_KEYS) d[k] = String(det[k] || "").trim();
   const tc = parseMoney(det.total);
   d.total = tc === null ? "" : isNaN(tc) ? String(det.total).trim() : money(tc);   // words like "Choose options" print as written
-  const desc = []; let L = 1;
+  const desc = []; let L = 1, lastPrice = null;   // lastPrice: the line the previous item's price went on
+  const priceTxt = (pc) => pc < 0 ? "-$" + money(-pc) : "$" + money(pc);
   for (const it of det.items) {
     const text = String(it.text || "").replace(/\s*\n\s*/g, " ").trim();
     const pc = parseMoney(it.price);
     if (pc !== null && isNaN(pc)) throw new BuildError('The price "' + it.price + '" isn\'t a dollar amount. Type it like 2,307.79.');
     if (!text && pc === null) continue;
+    if (pc !== null && pc < 0) {
+      // A discount or credit goes right under the amount it comes off, its words and amount on one line,
+      // the way it's handwritten: "5% veteran discount      -$102.32"
+      const line = lastPrice !== null ? lastPrice + 1 : L;
+      desc.push({ line, items: (text ? [{ at: 28, text }] : []).concat([{ at: 76.5, text: priceTxt(pc), underline: true }]) });
+      lastPrice = line; L = line + gapN; continue;
+    }
     if (text) desc.push({ line: L, items: [{ at: 0, text }] });
-    if (pc !== null) { if (text) L += gapP; desc.push({ line: L, items: [{ at: 76.5, text: (pc < 0 ? "-$" + money(-pc) : "$" + money(pc)), underline: true }] }); }
-    L += gapN;
+    if (pc !== null) { if (text) L += gapP; desc.push({ line: L, items: [{ at: 76.5, text: priceTxt(pc), underline: true }] }); lastPrice = L; }
+    else lastPrice = null;
+    L += pc !== null ? gapN : Math.max(1, gapN - 1);   // a note without a price gets one blank line after it, like the handwriting
   }
   d.description = desc;
   return d;
