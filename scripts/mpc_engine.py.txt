@@ -72,6 +72,9 @@ import io
 PAY_URL = "https://checkout.square.site/merchant/ML9HVHFH1H8GA/checkout/G7QNAC6PN4X6D3JNPHWDZDF2"
 CARLITO = "/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf"
 
+# Chrome-style dinosaur drawn in the middle of the code (20 x 22 pixels).
+DINO = ['...........########.', '..........##########', '..........##.#######', '..........##########', '..........##########', '..........##########', '..........#####.....', '..........########..', '#........#####......', '#......#######......', '##....##########....', '###..#########.#....', '##############......', '##############......', '.############.......', '..###########.......', '...#########........', '....#######.........', '.....###.##.........', '.....##...#.........', '.....#....#.........', '.....##...##........']
+
 def add_pay_qr(path):
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
@@ -82,83 +85,27 @@ def add_pay_qr(path):
     from reportlab.pdfbase.ttfonts import TTFont
     w = PdfWriter(clone_from=path); pg = w.pages[0]
     W, H = float(pg.mediabox.width), float(pg.mediabox.height)
-    size = 66.0
-    q = QrCodeWidget(PAY_URL, barLevel="M"); q.barBorder = 0
+    size = 76.0
+    q = QrCodeWidget(PAY_URL, barLevel="H"); q.barBorder = 0     # high error correction leaves room for the dinosaur
     b = q.getBounds(); s = size / (b[2] - b[0])
     d = Drawing(size, size, transform=[s, 0, 0, s, 0, 0]); d.add(q)
     try: pdfmetrics.getFont("Carlito")
     except KeyError: pdfmetrics.registerFont(TTFont("Carlito", CARLITO))
     buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
-    x = (W - size) / 2; y = 30.0
+    x = (W - size) / 2; y = 22.0
     renderPDF.draw(d, c, x, y)
+    px = size * 0.2 / 20                                          # dinosaur is 20% of the code's width
+    dw, dh = 20 * px, 22 * px; pad = px * 2
+    cx, cy = x + (size - dw) / 2, y + (size - dh) / 2
+    c.setFillColorRGB(1, 1, 1); c.rect(cx - pad, cy - pad, dw + 2 * pad, dh + 2 * pad, stroke=0, fill=1)
+    c.setFillColorRGB(0, 0, 0)
+    for r, row in enumerate(DINO):
+        for k, ch in enumerate(row):
+            if ch == "#":
+                c.rect(cx + k * px, cy + (21 - r) * px, px * 1.02, px * 1.02, stroke=0, fill=1)
     c.setFont("Carlito", 9.5); c.setFillColorRGB(0.2, 0.2, 0.2)
     c.drawCentredString(W / 2, y - 12, "Scan to pay with Square")
     c.save()
     pg.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
     with open(path, "wb") as fh: w.write(fh)
 
-
-
-# ---------------------------------------------------------------------------
-# Read the filled-in header of an estimate or sales contract PDF, so a job can
-# be started from a PDF that was made outside the program. Uses the company
-# scripts' own helpers for finding labels and entry lines.
-_LEFT = [("name", "Name:"), ("address", "Address:"), ("city_state_zip", "City/State/Zip:"), ("phone", "Phone:")]
-_RIGHT = [("windows", "Window(s):"), ("doors", "Door(s):"), ("patio_doors", "Patio Door(s):"), ("other", "Other:")]
-
-def read_header(path):
-    if SCRIPTS not in sys.path:
-        sys.path.insert(0, SCRIPTS)
-    import re as _re
-    import pdfplumber
-    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-        import build_contract as bc
-        import build_invoice as bi
-    out = {"kind": "", "fields": {}, "date": "", "total": "", "customer_no": "", "order_no": ""}
-    try:
-        with pdfplumber.open(path) as pdf:
-            P = pdf.pages[0]
-            ws = bc.words(P)
-            fc = bc.fill_chars(P)
-            head = " ".join(w["text"] for w in ws if w["top"] < 80 and w["x0"] > P.width * 0.55)
-            if "Sales" in head and "Contract" in head:
-                out["kind"] = "contract"
-            elif "Invoice" in head:
-                out["kind"] = "invoice"
-            elif "Estimate" in head:
-                out["kind"] = "estimate"
-            for col in (_LEFT, _RIGHT):
-                prev = None
-                for key, lab in col:
-                    try:
-                        r = bc.field_rule(P, bc.find_label(ws, lab))
-                        top = r["top"] - 16 if prev is None else max(r["top"] - 16, prev + 1.5)
-                        out["fields"][key] = bc.text_in(fc, r["x0"] - 2, top, r["x1"] + 2, r["top"] + 1.5)
-                        prev = r["top"]
-                    except Exception:
-                        out["fields"][key] = ""
-            try:
-                r = bc.field_rule(P, bc.find_label(ws, "Date:"))
-                out["date"] = bc.text_in(fc, r["x0"] - 2, r["top"] - 20, r["x1"] + 2, r["top"] + 1.5)
-            except Exception:
-                pass
-            try:
-                lab = [w for w in ws if w["text"] in ("Total:", "Total") and w["top"] > P.height * 0.5]
-                lab = sorted(lab, key=lambda w: w["top"])[0]
-                t = bc.text_in([c for c in fc if abs(c["top"] - lab["top"]) < 7 and c["x0"] > lab["x1"]], -1, -1, 9999, 9999)
-                m = _re.search(r"[\d,]+\.\d\d", t)
-                out["total"] = m.group(0) if m else ""
-            except Exception:
-                pass
-            if out["kind"] in ("contract", "invoice"):
-                for key, lab in (("customer_no", "Customer #"), ("order_no", "Order #")):
-                    try:
-                        l = bi.find_label(ws, lab)
-                        d = bi.cell_divider(P, l, "form")
-                        ch = [c for c in fc if c["x0"] > d - 1 and c["x1"] < d + 120 and l["top"] - 4 < c["top"] < l["bottom"] + 1]
-                        out[key] = bi.text_of(ch)
-                    except Exception:
-                        pass
-    except Exception as e:
-        out["error"] = str(e)
-    return json.dumps(out)
