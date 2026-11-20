@@ -67,15 +67,17 @@ def run(script, argv):
     return json.dumps({"code": code, "stdout": out.getvalue(), "stderr": err.getvalue()})
 
 # ---------------------------------------------------------------------------
-# Adds the Square payment QR code to the bottom of a finished Sales Contract.
+# Adds the Square, Venmo and Zelle payment QR codes to the bottom of a finished Sales Contract.
 import io
 PAY_URL = "https://checkout.square.site/merchant/ML9HVHFH1H8GA/checkout/G7QNAC6PN4X6D3JNPHWDZDF2"
+VENMO_URL = "https://www.paypal.com/qrcodes/venmocs/ad306aa5-4ea1-4022-8dfd-c6f5a0bd7b6e?created=1718381611"
+ZELLE_URL = "https://enroll.zellepay.com/qr-codes?data=eyJ0b2tlbiI6IjIwODg2NjYyMTEiLCJuYW1lIjoiVE9SSSBSVVVEIiwiYWN0aW9uIjoiUGF5bWVudCJ9"
 CARLITO = "/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf"
 
 # Chrome-style dinosaur drawn in the middle of the code (20 x 22 pixels).
 DINO = ['...........########.', '..........##########', '..........##.#######', '..........##########', '..........##########', '..........##########', '..........#####.....', '..........########..', '#........#####......', '#......#######......', '##....##########....', '###..#########.#....', '##############......', '##############......', '.############.......', '..###########.......', '...#########........', '....#######.........', '.....###.##.........', '.....##...#.........', '.....#....#.........', '.....##...##........']
 
-def add_pay_qr(path):
+def add_pay_qr(path, have_square=False):
     from pypdf import PdfReader, PdfWriter
     from reportlab.pdfgen import canvas
     from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -85,26 +87,32 @@ def add_pay_qr(path):
     from reportlab.pdfbase.ttfonts import TTFont
     w = PdfWriter(clone_from=path); pg = w.pages[0]
     W, H = float(pg.mediabox.width), float(pg.mediabox.height)
-    size = 62.0
-    q = QrCodeWidget(PAY_URL, barLevel="H"); q.barBorder = 0     # high error correction leaves room for the dinosaur
-    b = q.getBounds(); s = size / (b[2] - b[0])
-    d = Drawing(size, size, transform=[s, 0, 0, s, 0, 0]); d.add(q)
+    size = 62.0; y = 20.0
     try: pdfmetrics.getFont("Carlito")
     except KeyError: pdfmetrics.registerFont(TTFont("Carlito", CARLITO))
     buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
-    x = (W - size) / 2; y = 20.0
-    renderPDF.draw(d, c, x, y)
-    px = size * 0.2 / 20                                          # dinosaur is 20% of the code's width
-    dw, dh = 20 * px, 22 * px; pad = px * 2
-    cx, cy = x + (size - dw) / 2, y + (size - dh) / 2
-    c.setFillColorRGB(1, 1, 1); c.rect(cx - pad, cy - pad, dw + 2 * pad, dh + 2 * pad, stroke=0, fill=1)
-    c.setFillColorRGB(0, 0, 0)
-    for r, row in enumerate(DINO):
-        for k, ch in enumerate(row):
-            if ch == "#":
-                c.rect(cx + k * px, cy + (21 - r) * px, px * 1.02, px * 1.02, stroke=0, fill=1)
-    c.setFont("Carlito", 9.5); c.setFillColorRGB(0.2, 0.2, 0.2)
-    c.drawCentredString(W / 2, y - 12, "Scan to pay with Square")
+    def code(url, cx, label, level, dino):
+        q = QrCodeWidget(url, barLevel=level); q.barBorder = 0
+        b = q.getBounds(); s = size / (b[2] - b[0])
+        d = Drawing(size, size, transform=[s, 0, 0, s, 0, 0]); d.add(q)
+        x = cx - size / 2
+        renderPDF.draw(d, c, x, y)
+        if dino:                                                  # Chrome-style dinosaur in the middle (20% of the width)
+            px = size * 0.2 / 20; dw, dh = 20 * px, 22 * px; pad = px * 2
+            dx, dy = x + (size - dw) / 2, y + (size - dh) / 2
+            c.setFillColorRGB(1, 1, 1); c.rect(dx - pad, dy - pad, dw + 2 * pad, dh + 2 * pad, stroke=0, fill=1)
+            c.setFillColorRGB(0, 0, 0)
+            for r, row in enumerate(DINO):
+                for k, ch in enumerate(row):
+                    if ch == "#":
+                        c.rect(dx + k * px, dy + (21 - r) * px, px * 1.02, px * 1.02, stroke=0, fill=1)
+        c.setFont("Carlito", 9.5); c.setFillColorRGB(0.2, 0.2, 0.2)
+        c.drawCentredString(cx, y - 12, label)
+    # Square stays in the middle, exactly where it was first added; Venmo on the left, Zelle on the right.
+    if not have_square:                                          # contracts from before Venmo/Zelle already have it
+        code(PAY_URL, W / 2, "Scan to pay with Square", "H", True)
+    code(VENMO_URL, W / 2 - 130, "Scan to pay with Venmo", "M", False)
+    code(ZELLE_URL, W / 2 + 130, "Scan to pay with Zelle", "M", False)
     c.save()
     pg.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
     with open(path, "wb") as fh: w.write(fh)

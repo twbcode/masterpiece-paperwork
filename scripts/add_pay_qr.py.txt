@@ -10,7 +10,9 @@ os.makedirs(out_dir, exist_ok=True)
 dest = os.path.join(out_dir, name)
 shutil.copyfile(src, dest)
 try:
-    add_pay_qr(dest)
+    from pypdf import PdfReader
+    have = "Scan to pay with Square" in (PdfReader(dest).pages[0].extract_text() or "")
+    add_pay_qr(dest, have_square=have)
     print(json.dumps({"output": dest, "warnings": []}))
 except Exception as e:
     print(json.dumps({"error": "The payment QR code couldn't be added: %s" % e})); sys.exit(1)

@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.12";
+const APP_VERSION = "1.0.13";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -1417,11 +1417,11 @@ async function viewJob() {
   if (bytes) { $("#dl").addEventListener("click", () => offerFile(d.file, bytes)); renderPdf(bytes, $("#prev")); }
   if (tab === "contract" && bytes) pdfText(bytes).then(t => {
     const slot = $("#qr-slot");
-    if (!slot || t === null || /Scan to pay with Square/.test(t)) return;
-    slot.innerHTML = '<div class="note warn"><b>No payment QR code</b><span>This contract was made before the Square QR code was added.</span></div>' +
-      '<button class="btn btn-secondary btn-block" type="button" id="add-qr" data-needs-engine>Add the payment QR code</button>';
+    if (!slot || t === null || /Scan to pay with Zelle/.test(t)) return;
+    slot.innerHTML = '<div class="note warn"><b>Payment QR codes missing</b><span>This contract was made before the Square, Venmo and Zelle QR codes were added.</span></div>' +
+      '<button class="btn btn-secondary btn-block" type="button" id="add-qr" data-needs-engine>Add the payment QR codes</button>';
     $("#add-qr").addEventListener("click", async () => {
-      try { busy("Adding the payment QR code…"); await addPayQr(job); await saveJob(job); unbusy(); openJob(job.id, "contract"); }
+      try { busy("Adding the payment QR codes…"); await addPayQr(job); await saveJob(job); unbusy(); openJob(job.id, "contract"); }
       catch (e) { unbusy(); showError(e); }
     });
   });
