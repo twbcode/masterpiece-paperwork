@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.10";
+const APP_VERSION = "1.0.11";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -297,7 +297,7 @@ const WHEELS = [
   "pdfminer_six-20260107-py3-none-any.b64.txt", "pdfplumber-0.11.10-py3-none-any.b64.txt",
   "pypdf-6.17.0-py3-none-any.b64.txt", "reportlab-5.0.1-py3-none-any.b64.txt",
 ];
-const SCRIPTS = ["mpc_engine.py", "build_contract.py", "build_invoice.py", "build_estimate.py", "analyze_photo.py"];
+const SCRIPTS = ["mpc_engine.py", "build_contract.py", "build_invoice.py", "build_estimate.py", "analyze_photo.py", "add_pay_qr.py"];
 const WORKER_MAIN = `
 let py = null, eng = null;
 const get = async (u) => { const r = await fetch(u); if (!r.ok) throw new Error("Couldn't load " + u.split("/").pop() + " (" + r.status + ")"); return new Uint8Array(await r.arrayBuffer()); };
@@ -615,6 +615,16 @@ async function makeContract(job, cust, order) {
   await saveDoc(job, "contract", r.name, r.bytes);
   job.contract = Object.assign(job.contract || {}, { customer_no: cust, order_no: order, file: r.name, made: nowIso(), total: r.rep.total, deposit: r.rep.deposit, final_due: r.rep.final_due, warnings: r.rep.warnings || [] });
   if (!job.estimate) setPeople(job, r.rep.fields && { name: r.rep.fields["Name:"], address: r.rep.fields["Address:"], city_state_zip: r.rep.fields["City/State/Zip:"], phone: r.rep.fields["Phone:"] });
+  return r;
+}
+/* Put the Square payment QR code on the job's existing sales contract (one made before the code existed,
+   or one added as a ready-made PDF). The contract without the code moves to Earlier versions. */
+async function addPayQr(job) {
+  const con = await readBytes(await dirAt(job.folder), job.contract.file);
+  if (!con) throw new BuildError("The sales contract PDF for this job is missing from its folder.");
+  const r = finish(await runScript("add_pay_qr.py", ["/mpc/job/contract.pdf", "/mpc/out", job.contract.file], { "contract.pdf": con }));
+  await saveDoc(job, "contract", r.name, r.bytes);
+  job.contract.file = r.name; job.contract.made = nowIso();
   return r;
 }
 async function makeInvoice(job, o) {
@@ -1383,12 +1393,23 @@ async function viewJob() {
         '<button class="btn btn-secondary" type="button" id="dl"' + (bytes ? "" : " disabled") + '>Download PDF</button>' +
         (canEdit ? '<button class="btn btn-secondary" type="button" id="edit">Make changes</button>' : "") + '</div>' +
       (note ? '<p class="hint">' + esc(note) + '</p>' : "") +
+      (tab === "contract" && bytes ? '<div id="qr-slot"></div>' : "") +
       (bytes ? "" : '<div class="note bad">The PDF is missing from the job\'s folder.</div>') +
       (older.length ? '<details class="older"><summary>Earlier versions (' + older.length + ')</summary><ul>' + older.map((n, i) => '<li><span>' + esc(n) + '</span><button class="btn btn-text" type="button" data-old="' + i + '">Open</button></li>').join("") + '</ul></details>' : "") +
     '</div>' +
     '<div class="paper" id="prev"></div>';
   $("#primary").addEventListener("click", () => primary[1] === "home" ? go("home") : go("job", { id: job.id, tab: primary[1] }));
   if (bytes) { $("#dl").addEventListener("click", () => offerFile(d.file, bytes)); renderPdf(bytes, $("#prev")); }
+  if (tab === "contract" && bytes) pdfText(bytes).then(t => {
+    const slot = $("#qr-slot");
+    if (!slot || t === null || /Scan to pay with Square/.test(t)) return;
+    slot.innerHTML = '<div class="note warn"><b>No payment QR code</b><span>This contract was made before the Square QR code was added.</span></div>' +
+      '<button class="btn btn-secondary btn-block" type="button" id="add-qr" data-needs-engine>Add the payment QR code</button>';
+    $("#add-qr").addEventListener("click", async () => {
+      try { busy("Adding the payment QR code…"); await addPayQr(job); await saveJob(job); unbusy(); openJob(job.id, "contract"); }
+      catch (e) { unbusy(); showError(e); }
+    });
+  });
   if ($("#edit")) $("#edit").addEventListener("click", () => tab === "invoice" ? go("job", { id: job.id, tab: "invoice", edit: true }) : go("editor", { mode: tab, id: job.id }));
   $$("[data-old]").forEach(b => b.addEventListener("click", async () => {
     const n = older[+b.dataset.old];

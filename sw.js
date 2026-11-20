@@ -1,6 +1,6 @@
 // Offline support: keeps a copy of the program so it opens without internet.
 // A new version (new cache name) replaces the old copy the next time the program is opened online.
-const CACHE = "mpc-paperwork-1.0.10";
+const CACHE = "mpc-paperwork-1.0.11";
 const FILES = [
  "./",
  "index.html",
@@ -18,6 +18,7 @@ const FILES = [
  "py/reportlab-5.0.1-py3-none-any.b64.txt",
  "fonts/Carlito-Regular.ttf",
  "fonts/DejaVuSansCondensed.ttf",
+ "scripts/add_pay_qr.py.txt",
  "scripts/analyze_photo.py.txt",
  "scripts/build_contract.py.txt",
  "scripts/build_estimate.py.txt",
