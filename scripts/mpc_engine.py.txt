@@ -85,14 +85,14 @@ def add_pay_qr(path):
     from reportlab.pdfbase.ttfonts import TTFont
     w = PdfWriter(clone_from=path); pg = w.pages[0]
     W, H = float(pg.mediabox.width), float(pg.mediabox.height)
-    size = 76.0
+    size = 62.0
     q = QrCodeWidget(PAY_URL, barLevel="H"); q.barBorder = 0     # high error correction leaves room for the dinosaur
     b = q.getBounds(); s = size / (b[2] - b[0])
     d = Drawing(size, size, transform=[s, 0, 0, s, 0, 0]); d.add(q)
     try: pdfmetrics.getFont("Carlito")
     except KeyError: pdfmetrics.registerFont(TTFont("Carlito", CARLITO))
     buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
-    x = (W - size) / 2; y = 22.0
+    x = (W - size) / 2; y = 20.0
     renderPDF.draw(d, c, x, y)
     px = size * 0.2 / 20                                          # dinosaur is 20% of the code's width
     dw, dh = 20 * px, 22 * px; pad = px * 2
