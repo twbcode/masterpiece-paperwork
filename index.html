@@ -271,7 +271,7 @@ dialog .row { justify-content: flex-end; margin-top: 6px; }
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.11";
+const APP_VERSION = "1.0.12";
 const ROOT_NAME = "Masterpiece Paperwork";
 const JOB_FILE = "job details.json";
 const OLDER = "Older versions";
@@ -444,6 +444,21 @@ async function chooseFolder() {
   Store.root = root; Store.mode = "folder";
   await idbSet("root", { mode: "folder", handle: root });
 }
+/* Copy every folder and file from one place to another, keeping files that are already there. Returns how many were copied. */
+async function copyTree(from, to) {
+  let n = 0;
+  for await (const [name, h] of from.entries()) {
+    if (h.kind === "directory") n += await copyTree(h, await to.getDirectoryHandle(name, { create: true }));
+    else {
+      try { await to.getFileHandle(name); continue; } catch (_) {}
+      const f = await h.getFile();
+      const w = await (await to.getFileHandle(name, { create: true })).createWritable();
+      await w.write(await f.arrayBuffer()); await w.close(); n++;
+    }
+  }
+  return n;
+}
+if (/[?&]storage=browser/.test(location.search)) window.__mpcTest = { copyTree, root: () => Store.root };   // for automated tests
 async function useBrowserStorage() {
   const o = await navigator.storage.getDirectory();
   Store.root = await o.getDirectoryHandle(ROOT_NAME, { create: true }); Store.mode = "browser";
@@ -1485,7 +1500,7 @@ async function viewSettings() {
   view.innerHTML = backBtn("All jobs") + '<h2>Settings</h2>' +
     '<div class="card"><div class="card-head"><h3>Where files are saved</h3>' +
     (Store.mode === "folder" ? '<p class="muted">In the <b>' + esc(Store.root.name) + '</b> folder. Each job has its own folder inside it, by year and month.</p>' : '<p class="muted">In this browser only (preview). Use Chrome or Edge on a computer to save to a real folder.</p>') + '</div>' +
-    (Store.canFolder ? '<div><button class="btn btn-secondary" type="button" id="change">Use a different folder</button></div><p class="hint">Jobs already saved stay where they are.</p>' : "") + '</div>' +
+    (Store.canFolder ? '<div><button class="btn btn-secondary" type="button" id="change">Use a different folder</button></div><p class="hint">To save everything to Google Drive, choose your Masterpiece Construction Experts folder in Google Drive. Your jobs can be copied over.</p>' : "") + '</div>' +
     '<div class="card"><div class="card-head"><h3>Blank forms</h3><p class="muted">The empty forms the documents are typed onto. Replace one when the company updates it. Documents already made don\'t change.</p></div><div class="settings-list">' + rows.join("") + '</div><div id="form-msg"></div></div>' +
     '<div class="card"><div class="card-head"><h3>Handwriting reader</h3>' +
     (inArtifact ? '<p class="muted">In this preview, Read the handwriting uses your own Claude account. In the installed program it uses the reader key added here.</p></div>'
@@ -1495,7 +1510,18 @@ async function viewSettings() {
         '<div id="key-msg" aria-live="polite"></div>') + '</div>';
   $("#back").addEventListener("click", () => go("home"));
   if ($("#change")) $("#change").addEventListener("click", async () => {
+    const oldRoot = Store.root;
     try { await chooseFolder(); } catch (e) { if (e && e.name === "AbortError") return; return showError(e); }
+    let same = false; try { same = await oldRoot.isSameEntry(Store.root); } catch (_) {}
+    if (oldRoot && !same) {
+      const v = await ask({ title: "Copy your jobs to the new folder?", text: "All your jobs and the blank forms will be copied into the new Masterpiece Paperwork folder, so everything is in one place. The old folder isn't changed or deleted.",
+        buttons: [{ label: "Start empty", value: false }, { label: "Copy everything", value: true, kind: "btn-primary" }] });
+      if (v) {
+        try { busy("Copying your jobs…"); const n = await copyTree(oldRoot, Store.root); unbusy();
+          await ask({ title: "All copied", text: n + " files were copied to the new folder. From now on everything saves there. Once you've checked it, you can delete the old Masterpiece Paperwork folder if you like.", buttons: [{ label: "OK", value: true, kind: "btn-primary" }] }); }
+        catch (e) { unbusy(); showError(new Error("Some files couldn't be copied (" + ((e && e.message) || e) + "). The old folder still has everything.")); }
+      }
+    }
     await enterApp();
   });
   $$("[data-rep]").forEach(b => b.addEventListener("click", async () => {
