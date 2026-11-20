@@ -57,7 +57,46 @@ def run(script, argv):
                 code = 1
     finally:
         sys.argv = old_argv
+    if code == 0 and script == "build_contract.py":          # every sales contract gets the payment QR code
+        try:
+            for n in os.listdir(argv[-1]):
+                if n.endswith("Sales Contract.pdf"):
+                    add_pay_qr(os.path.join(argv[-1], n))
+        except Exception as e:
+            err.write("Payment QR code couldn't be added: %s\n" % e); code = 1
     return json.dumps({"code": code, "stdout": out.getvalue(), "stderr": err.getvalue()})
+
+# ---------------------------------------------------------------------------
+# Adds the Square payment QR code to the bottom of a finished Sales Contract.
+import io
+PAY_URL = "https://checkout.square.site/merchant/ML9HVHFH1H8GA/checkout/G7QNAC6PN4X6D3JNPHWDZDF2"
+CARLITO = "/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf"
+
+def add_pay_qr(path):
+    from pypdf import PdfReader, PdfWriter
+    from reportlab.pdfgen import canvas
+    from reportlab.graphics.barcode.qr import QrCodeWidget
+    from reportlab.graphics.shapes import Drawing
+    from reportlab.graphics import renderPDF
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    w = PdfWriter(clone_from=path); pg = w.pages[0]
+    W, H = float(pg.mediabox.width), float(pg.mediabox.height)
+    size = 66.0
+    q = QrCodeWidget(PAY_URL, barLevel="M"); q.barBorder = 0
+    b = q.getBounds(); s = size / (b[2] - b[0])
+    d = Drawing(size, size, transform=[s, 0, 0, s, 0, 0]); d.add(q)
+    try: pdfmetrics.getFont("Carlito")
+    except KeyError: pdfmetrics.registerFont(TTFont("Carlito", CARLITO))
+    buf = io.BytesIO(); c = canvas.Canvas(buf, pagesize=(W, H))
+    x = (W - size) / 2; y = 30.0
+    renderPDF.draw(d, c, x, y)
+    c.setFont("Carlito", 9.5); c.setFillColorRGB(0.2, 0.2, 0.2)
+    c.drawCentredString(W / 2, y - 12, "Scan to pay with Square")
+    c.save()
+    pg.merge_page(PdfReader(io.BytesIO(buf.getvalue())).pages[0])
+    with open(path, "wb") as fh: w.write(fh)
+
 
 
 # ---------------------------------------------------------------------------
