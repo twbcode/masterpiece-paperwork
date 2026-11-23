@@ -256,6 +256,14 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14.5px; font-vari
 }
 .print-only { display: none; }
 
+/* small screens: keep the top bar on one tidy line */
+#sign-out, #go-manage { white-space: nowrap; }
+@media (max-width: 720px) { .who-bar { display: none !important; } }
+@media (max-width: 480px) { .bar-in:has(#sign-out:not([hidden])) .brand-div, .bar-in:has(#sign-out:not([hidden])) .brand-name { display: none; } }
+.wk-nav { flex-wrap: nowrap; }
+.wk-nav > div { min-width: 0; }
+.navbtn { flex: none; }
+
 </style>
 
 <header class="bar">
@@ -281,7 +289,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 14.5px; font-vari
 (() => {
 "use strict";
 /* ================================================================ basics */
-const APP_VERSION = "1.0.0";
+const APP_VERSION = "1.0.1";
 const ROOT_NAME = "Masterpiece Time Clock";
 const SEAL_SALT = "mpc-timeclock-seal-v1";
 const OT_LIMIT = 40;                       // hours worked in a week before overtime
@@ -433,7 +441,14 @@ function newCode() {
   const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const r = crypto.getRandomValues(new Uint8Array(12));
   return [...r].map(x => A[x % A.length]).join("").replace(/(.{4})(?=.)/g, "$1-");
 }
-const pwProblem = (a, b) => a.length < 4 ? "Use at least 4 characters." : a !== b ? "The two passwords don't match." : "";
+/* password rules: at least 8 characters, an uppercase letter, a lowercase letter and a special character */
+const PW_RULES = "At least 8 characters, with an uppercase letter, a lowercase letter and a special character (like ! # $ or ?).";
+const pwProblem = (a, b) => a.length < 8 ? "The password needs at least 8 characters."
+  : !/[A-Z]/.test(a) ? "The password needs at least one uppercase letter (A–Z)."
+  : !/[a-z]/.test(a) ? "The password needs at least one lowercase letter (a–z)."
+  : !/[^A-Za-z0-9]/.test(a) ? "The password needs at least one special character, like ! # $ or ?."
+  : a !== b ? "The two passwords don't match." : "";
+const pwHint = '<p class="hint">' + PW_RULES + '</p>';
 
 /* ================================================================ data */
 const D = { settings: null, emps: [] };
@@ -715,7 +730,7 @@ function viewCreateManager() {
     '<div class="field"><label for="m-pos">Position</label><input type="text" id="m-pos" placeholder="Office Manager" autocomplete="off"></div>' +
     '<label class="check"><input type="checkbox" id="m-hourly" checked><span><b>I\'m hourly too</b><span class="hint">Show me on the time clock so I can clock in and out.</span></span></label>' +
     '<div class="grid2"><div class="field"><label for="m-pw">Password</label><input type="password" id="m-pw" autocomplete="new-password"></div>' +
-    '<div class="field"><label for="m-pw2">Type it again</label><input type="password" id="m-pw2" autocomplete="new-password"></div></div>' +
+    '<div class="field"><label for="m-pw2">Type it again</label><input type="password" id="m-pw2" autocomplete="new-password"></div></div>' + pwHint +
     '<div class="sep"></div>' +
     '<div class="card-head"><h3>Paid holidays for ' + y + '</h3><p class="muted">Holidays add hours to everyone\'s time card automatically. Uncheck any the company doesn\'t give. You can add your own later.</p></div>' +
     '<div class="field" style="max-width:220px"><label for="m-holh">Hours for each holiday</label><input type="number" id="m-holh" value="8" min="0" max="24" step="0.25"></div>' +
@@ -811,7 +826,7 @@ async function viewSignIn({ id }) {
     // the manager uses the recovery code
     const v = await ask({ title: "Reset with the recovery code", html: '<p class="muted">Type the recovery code you wrote down at setup, then choose a new password.</p>' +
       '<div class="field"><label for="rc">Recovery code</label><input type="text" id="rc" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></div>' +
-      '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div><p class="err" id="rerr"></p>',
+      '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div>' + pwHint + '<p class="err" id="rerr"></p>',
       buttons: [{ label: "Cancel", value: false }, { label: "Reset password", value: true, kind: "btn-primary", check: async () => {
         const code = $("#rc").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); const r = D.settings.recovery;
         if (!r || (await pwHash(code, r.salt)) !== r.hash) { $("#rerr").textContent = "That recovery code isn't right."; return false; }
@@ -826,7 +841,7 @@ async function changePassword(forced) {
   const emp = S.emp;
   return ask({ title: forced ? "Choose a new password" : "Change your password", html: (forced ? '<p class="muted">Your password was reset. Choose a new one that only you know.</p>' : "") +
     (forced ? "" : '<div class="field"><label for="op">Current password</label><input type="password" id="op"></div>') +
-    '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div><p class="err" id="perr"></p>',
+    '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div>' + pwHint + '<p class="err" id="perr"></p>',
     buttons: (forced ? [] : [{ label: "Cancel", value: false }]).concat([{ label: "Save password", value: true, kind: "btn-primary", check: async () => {
       if (!forced && !(await checkPassword(emp, $("#op").value))) { $("#perr").textContent = "Your current password isn't right."; return false; }
       const p = pwProblem($("#np").value, $("#np2").value); if (p) { $("#perr").textContent = p; return false; }
@@ -840,7 +855,7 @@ async function viewNewAccount() {
     '<div class="field"><label for="n-last">Last name</label><input type="text" id="n-last" autocomplete="off"></div></div>' +
     '<div class="field"><label for="n-pos">Position</label><input type="text" id="n-pos" autocomplete="off"></div>' +
     '<div class="grid2"><div class="field"><label for="n-pw">Password</label><input type="password" id="n-pw" autocomplete="new-password"></div>' +
-    '<div class="field"><label for="n-pw2">Type it again</label><input type="password" id="n-pw2" autocomplete="new-password"></div></div>' +
+    '<div class="field"><label for="n-pw2">Type it again</label><input type="password" id="n-pw2" autocomplete="new-password"></div></div>' + pwHint +
     '<p class="err" id="n-err"></p><button class="btn btn-primary btn-lg btn-block" type="button" id="n-go">Make my account</button></div></div>';
   $("#back").addEventListener("click", () => go("home"));
   $("#n-go").addEventListener("click", async () => {

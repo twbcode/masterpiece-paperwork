@@ -1,6 +1,6 @@
 // Offline support: keeps a copy of the program so it opens without internet.
 // A new version (new cache name) replaces the old copy the next time the program is opened online.
-const CACHE = "mpc-timeclock-1.0.0";
+const CACHE = "mpc-timeclock-1.0.1";
 const FILES = [
  "./",
  "index.html",
@@ -21,6 +21,7 @@ self.addEventListener("fetch", (e) => {
   const req = e.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
+  if (url.pathname.includes("/timeclock/")) return;   // the time clock has its own offline copy
   const isPage = req.mode === "navigate";
   if (isPage) {   // the page itself: newest when online, saved copy when offline
     e.respondWith(fetch(req).then((r) => { const c = r.clone(); caches.open(CACHE).then((k) => k.put("index.html", c)); return r; })
