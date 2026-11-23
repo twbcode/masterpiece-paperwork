@@ -1061,7 +1061,10 @@ function summaryCsv(wk, ws) {
     [w.issues.length ? "Missed punch" : "", w.estimated ? hrs(w.estimated) + " h estimated" : "", w.signed && !w.changedAfterSign ? "Confirmed by employee" : "Not confirmed"].filter(Boolean).join("; ")]);
   return rows.map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
-function download(name, text) {
+async function download(name, text) {
+  if (inArtifact) {   // the Claude preview hands files over through its own save prompt
+    try { const dl = await window.claude.use("downloads"); if (dl) { await dl.save({ filename: name, data: new Blob([text], { type: "text/csv" }) }); return; } } catch (_) { return; }
+  }
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name;
   document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
