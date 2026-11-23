@@ -1,0 +1,1343 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style></head><body><title>Masterpiece Time Clock</title>
+<meta name="theme-color" content="#ffffff">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+
+/* Layout: a light business app. White top bar; one centered column per screen; on a job, a 3-step
+   progress bar (Estimate -> Sales Contract -> Final Invoice) with one action panel beside the document. */
+:root {
+  color-scheme: light;
+  --bg: #f5f7f6;
+  --surface: #ffffff;
+  --subtle: #f0f3f2;
+  --ink: #15201c;
+  --muted: #5d6965;
+  --faint: #8a9591;
+  --line: #e1e6e4;
+  --line-strong: #cdd5d2;
+  --accent: #23604f;          /* Masterpiece green */
+  --accent-hover: #1a4c3e;
+  --accent-soft: #e7f1ed;
+  --accent-ink: #ffffff;
+  --warn: #8a4b00; --warn-bg: #fff4e2;
+  --bad: #a3231b; --bad-bg: #fdecea;
+  --good: #1f7a46; --good-bg: #e6f4ec;
+  --shadow: 0 1px 2px rgba(16, 32, 26, .05), 0 1px 3px rgba(16, 32, 26, .06);
+  --shadow-lg: 0 2px 4px rgba(16, 32, 26, .04), 0 12px 32px rgba(16, 32, 26, .10);
+  --font: "Figtree", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --r: 12px;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 16px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 26px; line-height: 1.2; }
+h3 { font-size: 18px; line-height: 1.3; font-weight: 600; }
+p { margin: 0; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+.hint { font-size: 13.5px; color: var(--muted); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 2px; }
+
+/* top bar */
+.bar { background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar-in, .main {
+  max-width: 1160px; margin: 0 auto;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+}
+.bar-in { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-block: 12px; }
+.brand { display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; color: inherit; cursor: pointer; font: inherit; }
+.logo { height: 48px; width: auto; display: block; }
+.brand-div { width: 1px; height: 28px; background: var(--line-strong); }
+.mark { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 18px; flex: none; }
+.brand-name { font-weight: 700; font-size: 18px; color: var(--accent); letter-spacing: -0.01em; }
+.bar-right { display: flex; align-items: center; gap: 8px; }
+.engine { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.engine[hidden] { display: none; }
+@media (max-width: 560px) { #engine-text { display: none; } .brand-name { font-size: 16px; } .logo { height: 34px; } }
+.engine .spin { width: 14px; height: 14px; border-width: 2px; }
+.icon-btn { appearance: none; background: none; border: 1px solid transparent; border-radius: 8px; padding: 7px 10px; cursor: pointer; color: var(--muted); font: inherit; font-size: 14px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; }
+.icon-btn:hover { background: var(--subtle); color: var(--ink); }
+.main { padding-block: 28px 56px; display: grid; gap: 24px; }
+#view { display: grid; gap: 20px; min-width: 0; }
+
+/* buttons */
+.btn { appearance: none; font: inherit; font-weight: 600; font-size: 15px; border-radius: 10px; cursor: pointer; padding: 10px 16px; border: 1px solid transparent; display: inline-flex; align-items: center; justify-content: center; gap: 8px; line-height: 1.2; text-decoration: none; transition: background .15s, border-color .15s; }
+.btn-primary { background: var(--accent); color: var(--accent-ink); box-shadow: var(--shadow); }
+.btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); }
+.btn-secondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.btn-text { background: none; color: var(--accent); padding: 6px 4px; }
+.btn-danger { color: var(--bad); }
+.btn-danger-solid { background: var(--bad); color: #fff; }
+.job-foot { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line, #e3e3e3); display: flex; justify-content: flex-end; }
+.btn-text:hover:not(:disabled) { text-decoration: underline; text-underline-offset: 3px; }
+.btn-lg { font-size: 16px; padding: 13px 22px; }
+.btn-block { width: 100%; }
+.btn:disabled { opacity: .45; cursor: not-allowed; box-shadow: none; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.why { font-size: 13.5px; color: var(--muted); }
+.why:empty { display: none; }
+
+/* cards + fields */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 24px; display: grid; gap: 18px; min-width: 0; align-content: start; }
+.card-head { display: grid; gap: 4px; }
+.section-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.field { display: grid; gap: 6px; min-width: 0; }
+.field label { font-weight: 600; font-size: 14px; }
+input[type="text"], input[type="search"], textarea {
+  font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums; transition: border-color .15s, box-shadow .15s;
+}
+textarea { resize: vertical; min-height: 84px; line-height: 1.45; }
+input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+.grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
+.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 16px; }
+@media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } .grid4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.money-in { position: relative; }
+.money-in::before { content: "$"; position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); font-weight: 600; }
+.money-in input { padding-left: 26px; }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check input { width: 18px; height: 18px; margin: 3px 0 0; accent-color: var(--accent); flex: none; }
+.check b { display: block; font-weight: 600; }
+details.more > summary { cursor: pointer; font-weight: 600; color: var(--accent); font-size: 15px; list-style: none; display: inline-flex; gap: 6px; align-items: center; }
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before { content: "+"; font-weight: 700; width: 14px; }
+details.more[open] > summary::before { content: "–"; }
+details.more > div { display: grid; gap: 16px; margin-top: 14px; }
+.opt { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--subtle); }
+.sep { height: 1px; background: var(--line); }
+
+.note { border-radius: 10px; padding: 11px 14px; font-size: 14.5px; display: grid; gap: 2px; }
+.note.warn { background: var(--warn-bg); color: var(--warn); }
+.note.bad { background: var(--bad-bg); color: var(--bad); }
+.note.ok { background: var(--good-bg); color: var(--good); }
+.note pre { white-space: pre-wrap; font-size: 12px; margin: 6px 0 0; max-height: 200px; overflow: auto; color: var(--ink); }
+.spin { width: 18px; height: 18px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; flex: none; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.busy { display: flex; align-items: center; gap: 12px; font-weight: 600; }
+
+/* dialog */
+dialog { border: none; border-radius: 16px; background: var(--surface); color: var(--ink); padding: 26px; max-width: min(480px, calc(100vw - 32px)); box-shadow: 0 24px 64px rgba(16, 32, 26, .25); }
+dialog::backdrop { background: rgba(16, 28, 24, .35); }
+dialog .dlg { display: grid; gap: 14px; }
+dialog .row { justify-content: flex-end; margin-top: 6px; }
+.settings-list { display: grid; gap: 10px; }
+.form-row { display: flex; flex-wrap: wrap; gap: 10px; justify-content: space-between; align-items: center; padding: 14px; border: 1px solid var(--line); border-radius: 10px; }
+.form-row > div:first-child { min-width: 0; }
+.foot { font-size: 13px; color: var(--faint); text-align: center; }
+
+/* ---------------------------------------------------------------- time clock */
+input[type="password"], input[type="date"], input[type="time"], input[type="number"], select {
+  font: inherit; font-size: 16px; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 10px 12px; width: 100%; min-width: 0; font-variant-numeric: tabular-nums;
+}
+input[type="password"]:focus, input[type="date"]:focus, input[type="time"]:focus, input[type="number"]:focus, select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.narrow { max-width: 520px; margin: 4vh auto 0; width: 100%; }
+.narrow .card { padding: 30px; gap: 18px; }
+.wide { max-width: 1160px; width: 100%; }
+.err { color: var(--bad); font-size: 14px; font-weight: 600; }
+.err:empty { display: none; }
+
+/* kiosk home */
+.now { display: grid; gap: 2px; justify-items: center; text-align: center; padding: 8px 0 4px; }
+.now-time { font-size: clamp(44px, 9vw, 72px); font-weight: 700; letter-spacing: -0.03em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--ink); }
+.now-date { font-size: 18px; color: var(--muted); font-weight: 500; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.tile { appearance: none; font: inherit; color: inherit; text-align: left; cursor: pointer; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 18px; display: grid; gap: 10px; transition: border-color .15s, background .15s; min-width: 0; }
+.tile:hover { border-color: var(--accent); }
+.tile .who { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.avatar { width: 44px; height: 44px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 16px; flex: none; }
+.tile .nm { font-weight: 600; font-size: 17px; overflow-wrap: anywhere; line-height: 1.25; }
+.tile .pos { font-size: 13.5px; color: var(--muted); }
+.tile.add { border-style: dashed; box-shadow: none; background: transparent; place-items: center; text-align: center; color: var(--accent); font-weight: 600; min-height: 116px; }
+.chip { justify-self: start; font-size: 13px; font-weight: 600; padding: 4px 10px; border-radius: 999px; display: inline-flex; gap: 6px; align-items: center; white-space: nowrap; }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip.in { background: var(--good-bg); color: var(--good); }
+.chip.out { background: var(--subtle); color: var(--muted); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); }
+
+/* sign in */
+.who-big { display: flex; gap: 14px; align-items: center; }
+.who-big .avatar { width: 52px; height: 52px; font-size: 19px; }
+
+/* employee page */
+.clock-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; }
+@media (max-width: 640px) { .clock-card { grid-template-columns: 1fr; } }
+.state { font-size: 15px; color: var(--muted); }
+.state b { color: var(--ink); }
+.bigbtn { appearance: none; font: inherit; font-weight: 700; font-size: 22px; border: none; border-radius: 16px; padding: 22px 40px; cursor: pointer; color: #fff; min-width: 240px; box-shadow: var(--shadow-lg); display: inline-flex; gap: 10px; align-items: center; justify-content: center; }
+.bigbtn.in { background: var(--accent); }
+.bigbtn.in:hover { background: var(--accent-hover); }
+.bigbtn.out { background: #8a2e22; }
+.bigbtn.out:hover { background: #73261c; }
+.bigbtn:disabled { opacity: .5; cursor: progress; }
+@media (max-width: 640px) { .bigbtn { width: 100%; min-width: 0; } }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.stat { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 2px; background: var(--surface); }
+.stat span { font-size: 13px; color: var(--muted); font-weight: 600; }
+.stat b { font-size: 22px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.stat.hi { background: var(--accent-soft); border-color: transparent; }
+.stat.hi b { color: var(--accent); }
+.stat em { font-style: normal; font-size: 12.5px; font-weight: 600; }
+.wk-nav { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wk-nav .lbl { font-weight: 700; font-size: 17px; }
+.wk-nav .sub { font-size: 14px; color: var(--muted); }
+.navbtn { appearance: none; border: 1px solid var(--line-strong); background: var(--surface); border-radius: 8px; width: 36px; height: 36px; display: grid; place-items: center; cursor: pointer; color: var(--ink); font-size: 18px; }
+.navbtn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.navbtn:disabled { opacity: .35; cursor: default; }
+
+/* tables */
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+table.tbl { width: 100%; border-collapse: collapse; font-size: 14.5px; font-variant-numeric: tabular-nums; }
+.tbl th { text-align: left; font-size: 12.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; padding: 10px 12px; background: var(--subtle); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.tbl td { padding: 11px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tbl tr:last-child td { border-bottom: none; }
+.tbl td.num, .tbl th.num { text-align: right; white-space: nowrap; }
+.tbl tr.click { cursor: pointer; }
+.tbl tr.click:hover td { background: var(--subtle); }
+.tbl tfoot td { font-weight: 700; background: var(--subtle); border-top: 1px solid var(--line-strong); }
+.tbl .day { font-weight: 600; white-space: nowrap; }
+.tbl .weekend { color: var(--muted); }
+.punches { display: flex; flex-wrap: wrap; gap: 6px; }
+.pair { display: inline-flex; gap: 6px; align-items: center; background: var(--subtle); border-radius: 8px; padding: 3px 8px; white-space: nowrap; font-size: 14px; }
+.pair.open { background: var(--good-bg); color: var(--good); font-weight: 600; }
+.pair.bad { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--subtle); color: var(--muted); white-space: nowrap; }
+.tag.pto { background: #e8eefc; color: #2b4a9b; }
+.tag.sick { background: #f6e9f5; color: #85307d; }
+.tag.hol { background: #e9f4f8; color: #1d6178; }
+.tag.est { background: var(--warn-bg); color: var(--warn); }
+.tag.ok { background: var(--good-bg); color: var(--good); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+.tag.bad { background: var(--bad-bg); color: var(--bad); }
+.flags { display: flex; flex-wrap: wrap; gap: 4px; }
+
+/* manage */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { appearance: none; background: none; border: none; font: inherit; font-weight: 600; font-size: 15px; color: var(--muted); padding: 10px 14px; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -1px; white-space: nowrap; display: inline-flex; gap: 6px; align-items: center; }
+.tab:hover { color: var(--ink); }
+.tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.count { background: var(--bad); color: #fff; border-radius: 999px; font-size: 12px; padding: 1px 7px; font-weight: 700; }
+.list { display: grid; gap: 10px; }
+.item-row { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; justify-content: space-between; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.item-row > div:first-child { min-width: 0; display: grid; gap: 2px; }
+.item-row .t { font-weight: 600; }
+.item-row .s { font-size: 14px; color: var(--muted); }
+.mini { font-size: 13.5px; padding: 6px 11px; border-radius: 8px; }
+.entry-list { display: grid; gap: 6px; }
+.entry { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.linkx { appearance: none; background: none; border: none; color: var(--bad); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.linkx:hover { background: var(--bad-bg); }
+.linke { appearance: none; background: none; border: none; color: var(--accent); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; padding: 2px 4px; border-radius: 6px; }
+.linke:hover { background: var(--accent-soft); }
+.code { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 24px; font-weight: 700; letter-spacing: .08em; text-align: center; padding: 16px; border: 2px dashed var(--accent); border-radius: 12px; background: var(--accent-soft); color: var(--accent); }
+.hol-list { display: grid; gap: 8px; }
+.toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: var(--ink); color: #fff; padding: 14px 22px; border-radius: 12px; font-weight: 600; box-shadow: var(--shadow-lg); z-index: 50; max-width: calc(100vw - 32px); text-align: center; }
+.toast[hidden] { display: none; }
+.who-bar { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); }
+.who-bar b { color: var(--ink); }
+
+/* print: just the content */
+@media print {
+  .bar, .no-print, .tabs, .foot, .toast { display: none !important; }
+  body { background: #fff; }
+  .main { padding: 0; }
+  .card { box-shadow: none; border: none; padding: 0; }
+  .tbl-wrap { border: 1px solid #999; }
+  .print-only { display: block !important; }
+}
+.print-only { display: none; }
+
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <button class="brand" type="button" id="go-home" aria-label="Masterpiece Time Clock, home">
+      <img class="logo" src="brand/masterpiece-logo.svg" alt="Masterpiece Construction Experts" width="120" height="41"><span class="brand-div" aria-hidden="true"></span><span class="brand-name">Time Clock</span>
+    </button>
+    <div class="bar-right">
+      <span class="who-bar" id="who" hidden></span>
+      <button class="icon-btn" type="button" id="go-manage" hidden>Manage</button>
+      <button class="btn btn-secondary mini" type="button" id="sign-out" hidden>Sign out</button>
+    </div>
+  </div>
+</header>
+<main class="main">
+  <div id="view" aria-live="polite"></div>
+  <footer class="foot" id="foot"></footer>
+</main>
+<dialog id="dlg"><div class="dlg" id="dlg-body"></div></dialog>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(() => {
+"use strict";
+/* ================================================================ basics */
+const APP_VERSION = "1.0.0";
+const ROOT_NAME = "Masterpiece Time Clock";
+const SEAL_SALT = "mpc-timeclock-seal-v1";
+const OT_LIMIT = 40;                       // hours worked in a week before overtime
+const IDLE_EMP = 90, IDLE_ADMIN = 600;     // seconds before an idle sign-in is signed out
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad2 = (n) => String(n).padStart(2, "0");
+const rnd = () => Math.random().toString(36).slice(2, 8);
+const uid = () => (crypto.randomUUID ? crypto.randomUUID().slice(0, 13) : Date.now().toString(36) + rnd());
+const params = new URLSearchParams(location.search);
+const inArtifact = !!(window.claude && window.claude.use);
+const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+const CATS = { worked: "Worked", pto: "PTO", sick: "Sick leave", holiday: "Holiday", estimated: "Estimated" };
+const CAT_TAG = { pto: "pto", sick: "sick", holiday: "hol", estimated: "est", worked: "" };
+
+/* dates: a week runs Monday to Sunday and is named by its Monday (YYYY-MM-DD); it's paid as "week ending Friday" */
+const dayKey = (d) => { d = new Date(d); return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); };
+const fromKey = (k) => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const weekOf = (d) => { d = new Date(d); d = new Date(d.getFullYear(), d.getMonth(), d.getDate()); return dayKey(addDays(d, -((d.getDay() + 6) % 7))); };
+const weekDays = (wk) => Array.from({ length: 7 }, (_, i) => dayKey(addDays(fromKey(wk), i)));
+const fridayOf = (wk) => dayKey(addDays(fromKey(wk), 4));
+const shiftWeek = (wk, n) => dayKey(addDays(fromKey(wk), 7 * n));
+const fmtTime = (t) => new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+const fmtDay = (k) => fromKey(k).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+const fmtDate = (k) => fromKey(k).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const fmtLong = (k) => fromKey(k).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+const fmtStamp = (t) => { const d = new Date(t); return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + ", " + fmtTime(t); };
+const weekLabel = (wk) => "Week ending Friday, " + fmtDate(fridayOf(wk));
+const weekLc = (wk) => "week ending Friday, " + fmtDate(fridayOf(wk));
+const weekRange = (wk) => fmtDay(wk) + " – " + fmtDay(fridayOf(wk));
+const r2 = (x) => Math.round(x * 100) / 100;
+const hrs = (x) => (Math.round(x * 100) / 100).toFixed(2);
+const hm = (h) => { const m = Math.round(h * 60); return Math.floor(m / 60) + ":" + pad2(m % 60); };
+const at = (dateKey, hhmm) => { const [h, m] = hhmm.split(":").map(Number); const d = fromKey(dateKey); d.setHours(h, m, 0, 0); return d.getTime(); };
+const timeVal = (t) => { const d = new Date(t); return pad2(d.getHours()) + ":" + pad2(d.getMinutes()); };
+const fullName = (e) => (e ? (e.first + " " + e.last).trim() : "Someone");
+const initials = (e) => ((e.first || "?")[0] + (e.last || "")[0] || "").toUpperCase();
+const nameOf = (id) => fullName(D.emps.find(e => e.id === id));
+
+/* ================================================================ storage: one shared folder (Google Drive) */
+function idb() {
+  return new Promise((res, rej) => {
+    const q = indexedDB.open("mpc-timeclock", 1);
+    q.onupgradeneeded = () => q.result.createObjectStore("kv");
+    q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error);
+  });
+}
+async function idbGet(k) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv").objectStore("kv").get(k); t.onsuccess = () => res(t.result); t.onerror = () => rej(t.error); }); }
+async function idbSet(k, v) { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction("kv", "readwrite").objectStore("kv").put(v, k); t.onsuccess = () => res(); t.onerror = () => rej(t.error); }); }
+
+const Store = { root: null, mode: null, pending: null, canFolder: false };
+async function perm(h, ask) {
+  if (!h.queryPermission) return "granted";
+  let p = await h.queryPermission({ mode: "readwrite" });
+  if (p !== "granted" && ask) p = await h.requestPermission({ mode: "readwrite" });
+  return p;
+}
+async function initStore() {
+  Store.canFolder = typeof window.showDirectoryPicker === "function" && window.top === window && params.get("storage") !== "browser";
+  let saved = null;
+  try { saved = await idbGet("root"); } catch (_) {}
+  if (saved && saved.mode === "folder" && saved.handle && Store.canFolder) {
+    Store.pending = saved.handle;
+    try { if (await perm(saved.handle, false) === "granted") { Store.root = saved.handle; Store.mode = "folder"; return "ready"; } } catch (_) {}
+    return "permission";
+  }
+  if (saved && saved.mode === "browser") { try { await useBrowserStorage(); return "ready"; } catch (_) {} }
+  if (!Store.canFolder && (inArtifact || params.get("storage") === "browser")) { await useBrowserStorage(); return "ready"; }
+  return "setup";
+}
+async function chooseFolder() {
+  const picked = await window.showDirectoryPicker({ id: "mpc-timeclock", mode: "readwrite" });
+  const root = picked.name === ROOT_NAME ? picked : await picked.getDirectoryHandle(ROOT_NAME, { create: true });
+  Store.root = root; Store.mode = "folder";
+  await idbSet("root", { mode: "folder", handle: root });
+}
+async function useBrowserStorage() {
+  const o = await navigator.storage.getDirectory();
+  Store.root = await o.getDirectoryHandle(ROOT_NAME, { create: true }); Store.mode = "browser";
+  try { await idbSet("root", { mode: "browser" }); } catch (_) {}
+}
+async function dirAt(parts, create = false) {
+  let d = Store.root;
+  for (const p of parts) {
+    try { d = await d.getDirectoryHandle(p, { create }); }
+    catch (e) { if (!create && e && (e.name === "NotFoundError" || e.name === "TypeError")) return null; throw e; }
+  }
+  return d;
+}
+async function listJson(parts) {
+  const d = await dirAt(parts); if (!d) return [];
+  const out = [];
+  for await (const [n, h] of d.entries()) if (h.kind === "file" && /\.json$/i.test(n)) out.push(n);
+  return out.sort();
+}
+async function listDirs(parts) {
+  const d = await dirAt(parts); if (!d) return [];
+  const out = [];
+  for await (const [n, h] of d.entries()) if (h.kind === "directory") out.push(n);
+  return out.sort();
+}
+
+/* Every record is sealed with a short code made from its contents. A record changed outside the
+   program (for example by editing the file by hand) no longer matches its seal and is flagged. */
+async function sha(s) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join(""); }
+const CACHE = new Map();     // records that never change (punches, ledger lines, log lines), by path
+async function readJson(parts, name, cache = false) {
+  const key = parts.join("/") + "/" + name;
+  if (cache && CACHE.has(key)) return CACHE.get(key);
+  const d = await dirAt(parts); if (!d) return null;
+  let text;
+  try { text = await (await (await d.getFileHandle(name)).getFile()).text(); }
+  catch (e) { if (e && (e.name === "NotFoundError" || e.name === "TypeError")) return null; throw e; }
+  let o;
+  try { o = JSON.parse(text); } catch (_) { return { _broken: true, _file: name }; }
+  const seal = o._seal; delete o._seal;
+  o._tampered = !seal || (await sha(SEAL_SALT + JSON.stringify(o))).slice(0, 24) !== seal;
+  if (cache) CACHE.set(key, o);
+  return o;
+}
+async function writeJson(parts, name, obj) {
+  const o = Object.assign({}, obj); delete o._tampered; delete o._seal;
+  const body = JSON.stringify(o);
+  const sealed = body.slice(0, -1) + (body.length > 2 ? "," : "") + '"_seal":"' + (await sha(SEAL_SALT + body)).slice(0, 24) + '"}';
+  const d = await dirAt(parts, true);
+  const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+  await w.write(sealed); await w.close();
+  const key = parts.join("/") + "/" + name;
+  if (CACHE.has(key)) CACHE.set(key, Object.assign({}, o, { _tampered: false }));
+}
+async function writeText(parts, name, text) {
+  const d = await dirAt(parts, true);
+  const w = await (await d.getFileHandle(name, { create: true })).createWritable();
+  await w.write(text); await w.close();
+}
+
+/* ================================================================ passwords */
+const toHex = (b) => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+async function pwHash(pw, saltHex, iter = 150000) {
+  const salt = new Uint8Array(saltHex.match(/../g).map(h => parseInt(h, 16)));
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  return toHex(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations: iter }, key, 256));
+}
+async function setPassword(emp, pw) { emp.salt = toHex(crypto.getRandomValues(new Uint8Array(16))); emp.iter = 150000; emp.hash = await pwHash(pw, emp.salt, emp.iter); }
+async function checkPassword(emp, pw) { return !!emp.hash && (await pwHash(pw, emp.salt, emp.iter || 150000)) === emp.hash; }
+function newCode() {
+  const A = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; const r = crypto.getRandomValues(new Uint8Array(12));
+  return [...r].map(x => A[x % A.length]).join("").replace(/(.{4})(?=.)/g, "$1-");
+}
+const pwProblem = (a, b) => a.length < 4 ? "Use at least 4 characters." : a !== b ? "The two passwords don't match." : "";
+
+/* ================================================================ data */
+const D = { settings: null, emps: [] };
+async function loadSettings() { D.settings = await readJson([], "settings.json"); return D.settings; }
+async function saveSettings() { await writeJson([], "settings.json", D.settings); }
+async function loadEmps() {
+  const out = [];
+  for (const n of await listJson(["employees"])) { const e = await readJson(["employees"], n); if (e && !e._broken) out.push(e); }
+  D.emps = out.sort((a, b) => fullName(a).localeCompare(fullName(b)));
+  return D.emps;
+}
+async function saveEmp(e) { await writeJson(["employees"], e.id + ".json", e); }
+const active = () => D.emps.filter(e => e.active !== false);
+const admins = () => active().filter(e => e.admin);
+
+/* events: one small file per thing that happens, so the 3 computers never write the same file */
+async function weekEvents(wk, empId) {
+  const parts = ["events", wk, empId]; const out = [];
+  for (const n of await listJson(parts)) { const o = await readJson(parts, n, true); if (o && !o._broken) out.push(Object.assign({ id: n.replace(/\.json$/, "") }, o)); }
+  return out.sort((a, b) => (a.created - b.created) || a.id.localeCompare(b.id));
+}
+async function addEvent(wk, empId, ev) {
+  const created = Date.now(); const name = created + "-" + rnd() + ".json";
+  const o = Object.assign({ created, by: S.emp ? S.emp.id : "", pc: PC }, ev);
+  await writeJson(["events", wk, empId], name, o);
+  CACHE.set(["events", wk, empId].join("/") + "/" + name, Object.assign({}, o, { _tampered: false }));
+  return name.replace(/\.json$/, "");
+}
+async function logChange(text) {
+  const t = Date.now();
+  try { await writeJson(["change log"], t + "-" + rnd() + ".json", { t, by: S.emp ? S.emp.id : "", text }); } catch (_) {}
+}
+async function loadLog(limit = 300) {
+  const names = (await listJson(["change log"])).slice(-limit).reverse(); const out = [];
+  for (const n of names) { const o = await readJson(["change log"], n, true); if (o) out.push(o); }
+  return out;
+}
+async function weekMeta(wk) {
+  const parts = ["events", wk, "_week"]; const out = [];
+  for (const n of await listJson(parts)) { const o = await readJson(parts, n, true); if (o) out.push(o); }
+  out.sort((a, b) => a.created - b.created);
+  const last = [...out].reverse().find(e => e.type === "lock" || e.type === "unlock");
+  return { locked: !!last && last.type === "lock", lock: last && last.type === "lock" ? last : null, history: out };
+}
+async function addWeekMeta(wk, ev) {
+  const created = Date.now();
+  await writeJson(["events", wk, "_week"], created + "-" + rnd() + ".json", Object.assign({ created, by: S.emp ? S.emp.id : "" }, ev));
+}
+/* requests (time off, missed punches): one file each, changed only by the person deciding */
+async function loadRequests() {
+  const out = [];
+  for (const n of await listJson(["requests"])) { const o = await readJson(["requests"], n); if (o && !o._broken) out.push(o); }
+  return out.sort((a, b) => b.created - a.created);
+}
+async function saveRequest(r) { await writeJson(["requests"], r.id + ".json", r); }
+/* PTO and sick balances: a running list of additions (+) and hours used (-) */
+async function ledger(empId) {
+  const out = [];
+  for (const n of await listJson(["balances", empId])) { const o = await readJson(["balances", empId], n, true); if (o) out.push(o); }
+  return out.sort((a, b) => a.t - b.t);
+}
+async function addLedger(empId, cat, hours, note) {
+  const t = Date.now();
+  await writeJson(["balances", empId], t + "-" + rnd() + ".json", { t, cat, hours: r2(hours), note, by: S.emp ? S.emp.id : "" });
+}
+async function balances(emp) {
+  const L = await ledger(emp.id);
+  const sum = (c) => r2((Number(emp[c + "Start"]) || 0) + L.filter(x => x.cat === c).reduce((s, x) => s + x.hours, 0));
+  return { pto: sum("pto"), sick: sum("sick"), lines: L };
+}
+
+/* ================================================================ the hours math */
+const roundT = (t) => { const m = Number(D.settings && D.settings.round) || 0; return m ? Math.round(t / (m * 60000)) * m * 60000 : t; };
+function holidaysIn(wk) {
+  const days = weekDays(wk).slice(0, 5);
+  return ((D.settings && D.settings.holidays) || []).filter(h => days.includes(h.date));
+}
+/* Works out one person's week from its events. */
+function computeWeek(emp, wk, evs, now = Date.now()) {
+  const live = evs.filter(e => !evs.some(v => v.type === "void" && v.target === e.id));
+  const moves = {}; live.filter(e => e.type === "move").forEach(e => { moves[e.target] = e.at; });
+  const keys = weekDays(wk);
+  const days = keys.map(k => ({ key: k, pairs: [], minutes: 0, entries: [], issues: [], est: null, worked: 0 }));
+  const dayOf = (t) => days.find(d => d.key === dayKey(t)) || null;
+  const issues = [];
+  const punches = live.filter(e => e.type === "punch").map(e => ({ id: e.id, dir: e.dir, at: moves[e.id] != null ? moves[e.id] : e.at, how: e.how, by: e.by, tampered: e._tampered, moved: moves[e.id] != null }))
+    .sort((a, b) => a.at - b.at);
+  let open = null, liveMin = 0, clockedIn = null;
+  const addPair = (i, o) => {
+    const d = dayOf(i ? i.at : o.at); if (!d) return;
+    const p = { in: i, out: o };
+    if (i && o) { p.min = Math.max(0, (roundT(o.at) - roundT(i.at)) / 60000); d.minutes += p.min; }
+    d.pairs.push(p); return p;
+  };
+  for (const p of punches) {
+    if (p.dir === "in") {
+      if (open) { const x = addPair(open, null); if (x) { x.bad = "No clock-out"; dayOf(open.at).issues.push("Clocked in at " + fmtTime(open.at) + " without clocking out"); } }
+      open = p;
+    } else {
+      if (open) { addPair(open, p); open = null; }
+      else { const x = addPair(null, p); if (x) { x.bad = "No clock-in"; const d = dayOf(p.at); if (d) d.issues.push("Clocked out at " + fmtTime(p.at) + " without clocking in"); } }
+    }
+  }
+  if (open) {
+    const x = addPair(open, null);
+    if (x && dayKey(open.at) === dayKey(now) && now - open.at < 18 * 3600000) { x.live = true; clockedIn = open; liveMin = Math.max(0, (now - roundT(open.at)) / 60000); }
+    else if (x) { x.bad = "No clock-out"; const d = dayOf(open.at); if (d) d.issues.push("Missed clock-out after " + fmtTime(open.at)); }
+  }
+  // hours added by the manager or approved requests
+  for (const e of live.filter(e => e.type === "hours")) { const d = days.find(x => x.key === e.date); if (d) d.entries.push({ id: e.id, cat: e.cat, hours: Number(e.hours) || 0, note: e.note || "", by: e.by, tampered: e._tampered }); }
+  // company holidays (Monday to Friday) count automatically unless taken off for this person
+  for (const h of holidaysIn(wk)) {
+    const d = days.find(x => x.key === h.date);
+    const off = live.some(e => e.type === "holiday_off" && e.date === h.date);
+    if (d && !off && !d.entries.some(x => x.cat === "holiday")) d.entries.push({ id: null, cat: "holiday", hours: Number(h.hours) || 0, note: h.name, auto: true });
+  }
+  const T = { worked: 0, pto: 0, sick: 0, holiday: 0, estimatedUsed: 0 }; const estDiffs = [];
+  for (const d of days) {
+    const actual = d.minutes / 60 + d.entries.filter(x => x.cat === "worked").reduce((s, x) => s + x.hours, 0);
+    const est = d.entries.filter(x => x.cat === "estimated").reduce((s, x) => s + x.hours, 0);
+    const hasActual = d.pairs.length > 0 || d.entries.some(x => x.cat === "worked");
+    d.worked = actual;
+    if (est) {
+      if (hasActual) { d.est = { hours: est, replaced: true }; estDiffs.push({ date: d.key, est, actual: r2(actual) }); }
+      else { d.est = { hours: est, replaced: false }; d.worked = est; T.estimatedUsed += est; }
+    }
+    T.worked += d.worked;
+    for (const c of ["pto", "sick", "holiday"]) T[c] += d.entries.filter(x => x.cat === c).reduce((s, x) => s + x.hours, 0);
+    if (d.issues.length) issues.push(...d.issues.map(t => fmtDay(d.key) + ": " + t));
+  }
+  const worked = r2(T.worked), reg = r2(Math.min(worked, OT_LIMIT)), ot = r2(Math.max(0, worked - OT_LIMIT));
+  const otEv = [...live].reverse().find(e => e.type === "ot");
+  const otApproved = otEv ? Number(otEv.hours) : null;
+  const otStatus = ot <= 0 ? "none" : otApproved == null ? "pending" : Math.abs(otApproved - ot) < 0.01 ? "approved" : "changed";
+  const sign = [...live].reverse().find(e => e.type === "signoff");
+  const changedAfterSign = sign ? live.some(e => e.created > sign.created && e.type !== "signoff") : false;
+  const tampered = evs.some(e => e._tampered);
+  const total = r2(reg + ot + T.pto + T.sick + T.holiday);
+  return { emp, wk, days, punches, clockedIn, liveMin, issues, worked, reg, ot, otApproved, otStatus, pto: r2(T.pto), sick: r2(T.sick), holiday: r2(T.holiday),
+    estimated: r2(T.estimatedUsed), estDiffs, total, signed: sign || null, changedAfterSign, tampered };
+}
+async function weekFor(emp, wk) { return computeWeek(emp, wk, await weekEvents(wk, emp.id)); }
+const snapOf = (w) => ({ reg: w.reg, ot: w.ot, pto: w.pto, sick: w.sick, holiday: w.holiday, total: w.total });
+
+/* ================================================================ session (shared office computers) */
+const S = { emp: null, last: Date.now() };
+let PC = "";
+const touch = () => { S.last = Date.now(); };
+["pointerdown", "keydown"].forEach(t => document.addEventListener(t, touch, true));
+setInterval(() => {
+  if (!S.emp) return;
+  const limit = (S.emp.admin ? IDLE_ADMIN : IDLE_EMP) * 1000;
+  if (Date.now() - S.last > limit && !$("#dlg").open) { signOut(); toast("Signed out after a few minutes of no activity."); }
+}, 5000);
+function signIn(emp) { S.emp = emp; touch(); paintBar(); }
+function signOut() { S.emp = null; paintBar(); go("home"); }
+function paintBar() {
+  const w = $("#who"), m = $("#go-manage"), o = $("#sign-out");
+  w.hidden = o.hidden = !S.emp; m.hidden = !(S.emp && S.emp.admin);
+  w.innerHTML = S.emp ? 'Signed in as <b>' + esc(fullName(S.emp)) + '</b>' : "";
+}
+
+/* ================================================================ little UI helpers */
+const view = () => $("#view");
+const dlg = $("#dlg");
+function ask({ title, text, html, buttons, wide }) {
+  return new Promise(res => {
+    $("#dlg-body").innerHTML = '<h3>' + esc(title) + '</h3>' + (text ? '<p class="muted">' + esc(text) + '</p>' : "") + (html || "") +
+      '<div class="row">' + buttons.map((b, i) => '<button class="btn ' + (b.kind || "btn-secondary") + '" type="button" data-i="' + i + '">' + esc(b.label) + '</button>').join("") + '</div>';
+    dlg.style.maxWidth = wide ? "min(620px, calc(100vw - 32px))" : "";
+    let done = false;
+    const finish = (v) => { if (done) return; done = true; dlg.removeEventListener("cancel", onCancel); if (dlg.open) dlg.close(); res(v); };
+    const onCancel = (e) => { e.preventDefault(); finish(null); };
+    dlg.addEventListener("cancel", onCancel);
+    $$("[data-i]", dlg).forEach(b => b.addEventListener("click", async () => {
+      const B = buttons[+b.dataset.i];
+      if (B.check) { const ok = await B.check(); if (!ok) return; }
+      finish(B.value);
+    }));
+    dlg.showModal();
+    const f = $("input, select, textarea", dlg); if (f) f.focus();
+  });
+}
+const alertBox = (title, text) => ask({ title, text, buttons: [{ label: "OK", value: true, kind: "btn-primary" }] });
+function showError(e) { console.error(e); return alertBox("That didn't work", (e && e.message) || String(e)); }
+let toastT = null;
+function toast(t, ms = 3500) { const el = $("#toast"); el.textContent = t; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, ms); }
+const backBtn = (label = "Back") => '<button class="btn btn-text no-print" type="button" id="back" style="justify-self:start">← ' + esc(label) + '</button>';
+function catTag(c, extra) { return '<span class="tag ' + (CAT_TAG[c] || "") + '">' + esc(CATS[c] || c) + (extra ? " " + esc(extra) : "") + '</span>'; }
+function otTag(w) {
+  if (w.otStatus === "none") return "";
+  if (w.otStatus === "approved") return '<span class="tag ok">OT approved</span>';
+  if (w.otStatus === "changed") return '<span class="tag warn">OT changed since approved</span>';
+  return '<span class="tag warn">OT needs approval</span>';
+}
+
+/* ================================================================ navigation */
+let current = { name: "home" };
+let pollT = null;
+function go(name, opts = {}) {
+  current = Object.assign({ name }, opts);
+  clearInterval(pollT); pollT = null;
+  if (dlg.open) dlg.close();
+  window.scrollTo(0, 0);
+  const V = { home: viewHome, signin: viewSignIn, newacct: viewNewAccount, me: viewMe, manage: viewManage, empweek: viewEmpWeek }[name];
+  Promise.resolve(V(opts)).catch(showError);
+}
+$("#go-home").addEventListener("click", () => { if (D.settings) go(S.emp ? "me" : "home"); });
+$("#go-manage").addEventListener("click", () => go("manage", { tab: "week" }));
+$("#sign-out").addEventListener("click", () => signOut());
+
+/* ================================================================ first run */
+function viewChooseFolder() {
+  view().innerHTML = '<div class="narrow"><div class="card">' +
+    '<div class="card-head"><span class="section-title">Set up this computer</span><h2>Where should time cards be kept?</h2>' +
+    '<p class="muted">Choose the shared <b>Google Drive</b> folder that every office computer can see. The program makes a <b>' + ROOT_NAME + '</b> folder inside it. Every clock-in and time card is saved there, and Google Drive keeps the computers in step.</p></div>' +
+    (Store.canFolder ? '<button class="btn btn-primary btn-lg btn-block" type="button" id="pick">Choose the Google Drive folder</button>' +
+      '<p class="hint">Use the same folder on all 3 computers. When the browser asks, choose <b>Edit files</b> or <b>Allow</b>.</p>'
+      : '<div class="note warn">Saving to a shared folder needs Chrome or Edge on a computer.</div><button class="btn btn-secondary btn-block" type="button" id="browser">Try it in this browser only</button>') +
+    '</div></div>';
+  if ($("#pick")) $("#pick").addEventListener("click", async () => {
+    try { await chooseFolder(); } catch (e) { if (e && e.name === "AbortError") return; return showError(e); }
+    enterApp();
+  });
+  if ($("#browser")) $("#browser").addEventListener("click", async () => { await useBrowserStorage(); enterApp(); });
+}
+function viewPermission() {
+  view().innerHTML = '<div class="narrow"><div class="card"><div class="card-head"><h2>Welcome back</h2>' +
+    '<p class="muted">The browser needs your OK to open the <b>' + ROOT_NAME + '</b> folder again.</p></div>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="grant">Open the time clock</button>' +
+    '<p class="hint">Tip: when the browser asks, choose <b>Allow on every visit</b> so this step goes away.</p>' +
+    '<button class="btn btn-text" type="button" id="other">Use a different folder</button></div></div>';
+  $("#grant").addEventListener("click", async () => {
+    try { if (await perm(Store.pending, true) === "granted") { Store.root = Store.pending; Store.mode = "folder"; return enterApp(); } } catch (e) { return showError(e); }
+  });
+  $("#other").addEventListener("click", viewChooseFolder);
+}
+
+/* federal holidays, observed on Friday or Monday when they fall on a weekend */
+function nthDow(y, m, dow, n) { const d = new Date(y, m, 1); const off = (dow - d.getDay() + 7) % 7; return new Date(y, m, 1 + off + 7 * (n - 1)); }
+function lastDow(y, m, dow) { const d = new Date(y, m + 1, 0); return new Date(y, m, d.getDate() - ((d.getDay() - dow + 7) % 7)); }
+const observed = (d) => d.getDay() === 6 ? addDays(d, -1) : d.getDay() === 0 ? addDays(d, 1) : d;
+function suggestedHolidays(y) {
+  const tg = nthDow(y, 10, 4, 4);
+  return [
+    { key: "newyear", name: "New Year's Day", date: observed(new Date(y, 0, 1)), on: true },
+    { key: "mlk", name: "Martin Luther King Jr. Day", date: nthDow(y, 0, 1, 3), on: false },
+    { key: "pres", name: "Presidents' Day", date: nthDow(y, 1, 1, 3), on: false },
+    { key: "memorial", name: "Memorial Day", date: lastDow(y, 4, 1), on: true },
+    { key: "june", name: "Juneteenth", date: observed(new Date(y, 5, 19)), on: false },
+    { key: "july4", name: "Independence Day", date: observed(new Date(y, 6, 4)), on: true },
+    { key: "labor", name: "Labor Day", date: nthDow(y, 8, 1, 1), on: true },
+    { key: "columbus", name: "Columbus Day", date: nthDow(y, 9, 1, 2), on: false },
+    { key: "veterans", name: "Veterans Day", date: observed(new Date(y, 10, 11)), on: false },
+    { key: "thanks", name: "Thanksgiving Day", date: tg, on: true },
+    { key: "thanks2", name: "Day after Thanksgiving", date: addDays(tg, 1), on: true },
+    { key: "xmaseve", name: "Christmas Eve", date: observed(new Date(y, 11, 24)), on: false },
+    { key: "xmas", name: "Christmas Day", date: observed(new Date(y, 11, 25)), on: true },
+    { key: "nye", name: "New Year's Eve", date: observed(new Date(y, 11, 31)), on: false },
+  ].map(h => Object.assign(h, { date: dayKey(h.date) }));
+}
+function holidayChecklist(y, existing = []) {
+  return '<div class="hol-list" data-year="' + y + '">' + suggestedHolidays(y).map(h => {
+    const have = existing.some(x => x.date === h.date);
+    return '<label class="check"><input type="checkbox" data-hol="' + h.key + '"' + ((have || (!existing.length && h.on)) ? " checked" : "") + (have ? " disabled" : "") + '><span><b>' + esc(h.name) + '</b><span class="hint">' + esc(fmtLong(h.date)) + (have ? " · already added" : "") + '</span></span></label>';
+  }).join("") + '</div>';
+}
+function readChecklist(box, hours) {
+  const y = +box.dataset.year; const S0 = suggestedHolidays(y);
+  return $$("input[data-hol]:checked:not(:disabled)", box).map(i => { const h = S0.find(x => x.key === i.dataset.hol); return { id: uid(), date: h.date, name: h.name, hours }; });
+}
+function viewCreateManager() {
+  const y = new Date().getFullYear();
+  view().innerHTML = '<div class="narrow" style="max-width:620px"><div class="card">' +
+    '<div class="card-head"><span class="section-title">One-time setup</span><h2>Set up the time clock</h2>' +
+    '<p class="muted">First, the manager account. The manager approves time off and overtime, fixes time cards, and resets passwords.</p></div>' +
+    '<div class="grid2"><div class="field"><label for="m-first">First name</label><input type="text" id="m-first" autocomplete="off"></div>' +
+    '<div class="field"><label for="m-last">Last name</label><input type="text" id="m-last" autocomplete="off"></div></div>' +
+    '<div class="field"><label for="m-pos">Position</label><input type="text" id="m-pos" placeholder="Office Manager" autocomplete="off"></div>' +
+    '<label class="check"><input type="checkbox" id="m-hourly" checked><span><b>I\'m hourly too</b><span class="hint">Show me on the time clock so I can clock in and out.</span></span></label>' +
+    '<div class="grid2"><div class="field"><label for="m-pw">Password</label><input type="password" id="m-pw" autocomplete="new-password"></div>' +
+    '<div class="field"><label for="m-pw2">Type it again</label><input type="password" id="m-pw2" autocomplete="new-password"></div></div>' +
+    '<div class="sep"></div>' +
+    '<div class="card-head"><h3>Paid holidays for ' + y + '</h3><p class="muted">Holidays add hours to everyone\'s time card automatically. Uncheck any the company doesn\'t give. You can add your own later.</p></div>' +
+    '<div class="field" style="max-width:220px"><label for="m-holh">Hours for each holiday</label><input type="number" id="m-holh" value="8" min="0" max="24" step="0.25"></div>' +
+    holidayChecklist(y) +
+    '<p class="err" id="m-err"></p>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="m-go">Finish setup</button></div></div>';
+  $("#m-go").addEventListener("click", async () => {
+    const first = $("#m-first").value.trim(), last = $("#m-last").value.trim(), pos = $("#m-pos").value.trim();
+    const pw = $("#m-pw").value, pw2 = $("#m-pw2").value;
+    const err = !first || !last ? "Type your first and last name." : pwProblem(pw, pw2);
+    if (err) { $("#m-err").textContent = err; return; }
+    const btn = $("#m-go"); btn.disabled = true;
+    try {
+      const code = newCode();
+      const emp = { id: uid(), first, last, position: pos || "Office Manager", admin: true, hourly: $("#m-hourly").checked, active: true, created: Date.now(), ptoStart: 0, sickStart: 0 };
+      await setPassword(emp, pw);
+      const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+      D.settings = { created: Date.now(), round: 0, holidays: readChecklist($(".hol-list"), Number($("#m-holh").value) || 8), recovery: { salt, hash: await pwHash(code.replace(/-/g, ""), salt) } };
+      await saveSettings(); await saveEmp(emp); await loadEmps();
+      S.emp = emp; await logChange("Set up the time clock"); S.emp = null;
+      await ask({ title: "Write down this recovery code", html: '<p class="muted">If the manager password is ever forgotten, this code is the only way back in. Keep it somewhere safe, away from the computer.</p><div class="code">' + code + '</div>',
+        buttons: [{ label: "I wrote it down", value: true, kind: "btn-primary" }] });
+      go("home");
+    } catch (e) { btn.disabled = false; showError(e); }
+  });
+}
+async function enterApp() {
+  if (!PC) { PC = (await idbGet("pc").catch(() => null)) || ("PC-" + rnd().toUpperCase()); idbSet("pc", PC).catch(() => {}); }
+  await loadSettings();
+  if (!D.settings) return viewCreateManager();
+  await loadEmps();
+  go("home");
+}
+
+/* ================================================================ home: who's clocking in? */
+async function viewHome() {
+  if (S.emp) { S.emp = null; paintBar(); }
+  const draw = async () => {
+    await loadEmps();
+    const wk = weekOf(new Date());
+    const people = active().filter(e => e.hourly !== false);
+    const weeks = await Promise.all(people.map(e => weekFor(e, wk)));
+    if (current.name !== "home") return;
+    const managers = active().filter(e => e.admin && e.hourly === false);
+    const now = new Date();
+    view().innerHTML = '<div class="now"><div class="now-time" id="now-time">' + fmtTime(now) + '</div><div class="now-date">' + esc(fmtLong(dayKey(now))) + '</div></div>' +
+      '<div class="card-head" style="text-align:center"><h3>Tap your name to clock in or out</h3></div>' +
+      '<div class="tiles">' + people.map((e, i) => {
+        const w = weeks[i];
+        const chip = w.clockedIn ? '<span class="chip in">In since ' + fmtTime(w.clockedIn.at) + '</span>' : w.issues.length ? '<span class="chip warn">Missed punch</span>' : '<span class="chip out">Out</span>';
+        return '<button class="tile" type="button" data-emp="' + e.id + '"><div class="who"><span class="avatar">' + esc(initials(e)) + '</span><div><div class="nm">' + esc(fullName(e)) + '</div><div class="pos">' + esc(e.position || "") + '</div></div></div>' + chip + '</button>';
+      }).join("") +
+      managers.map(e => '<button class="tile" type="button" data-emp="' + e.id + '"><div class="who"><span class="avatar">' + esc(initials(e)) + '</span><div><div class="nm">' + esc(fullName(e)) + '</div><div class="pos">' + esc(e.position || "Manager") + '</div></div></div><span class="chip out">Manager</span></button>').join("") +
+      '<button class="tile add" type="button" id="new-acct">+ New employee?<br><span class="hint">Make your account</span></button></div>';
+    $$("[data-emp]").forEach(b => b.addEventListener("click", () => go("signin", { id: b.dataset.emp })));
+    $("#new-acct").addEventListener("click", () => go("newacct"));
+  };
+  await draw();
+  let n = 0;
+  pollT = setInterval(() => {
+    const el = $("#now-time"); if (el) el.textContent = fmtTime(new Date());
+    if (!dlg.open && ++n % 6 === 0) draw().catch(() => {});   // every 30 seconds, pick up clock-ins from the other computers
+  }, 5000);
+}
+
+/* ================================================================ sign in */
+async function viewSignIn({ id }) {
+  await loadEmps();
+  const emp = D.emps.find(e => e.id === id); if (!emp) return go("home");
+  view().innerHTML = '<div class="narrow"><div class="card">' + backBtn("Not you?") +
+    '<div class="who-big"><span class="avatar">' + esc(initials(emp)) + '</span><div><h2>' + esc(fullName(emp)) + '</h2><p class="muted">' + esc(emp.position || "") + '</p></div></div>' +
+    '<div class="field"><label for="pw">Password</label><input type="password" id="pw" autocomplete="current-password"></div>' +
+    '<p class="err" id="err"></p>' +
+    '<button class="btn btn-primary btn-lg btn-block" type="button" id="go">Sign in</button>' +
+    '<button class="btn btn-text" type="button" id="forgot">Forgot your password?</button></div></div>';
+  $("#back").addEventListener("click", () => go("home"));
+  $("#pw").focus();
+  const tryIt = async () => {
+    const btn = $("#go"); btn.disabled = true; $("#err").textContent = "";
+    try {
+      const fresh = await readJson(["employees"], emp.id + ".json") || emp;
+      if (!(await checkPassword(fresh, $("#pw").value))) { $("#err").textContent = "That password isn't right. Try again."; btn.disabled = false; $("#pw").select(); return; }
+      signIn(fresh);
+      if (fresh.mustChange) return changePassword(true).then(() => go(fresh.hourly === false ? "manage" : "me", { tab: "week" }));
+      go(fresh.hourly === false ? "manage" : "me", { tab: "week" });
+    } catch (e) { btn.disabled = false; showError(e); }
+  };
+  $("#go").addEventListener("click", tryIt);
+  $("#pw").addEventListener("keydown", (e) => { if (e.key === "Enter") tryIt(); });
+  $("#forgot").addEventListener("click", async () => {
+    const mgr = admins().filter(a => a.id !== emp.id).map(fullName);
+    if (!emp.admin || mgr.length) return alertBox("Forgot your password?", (mgr.length ? mgr.join(" or ") : "The manager") + " can reset it for you in Manage → Employees. You'll pick a new password the next time you sign in.");
+    // the manager uses the recovery code
+    const v = await ask({ title: "Reset with the recovery code", html: '<p class="muted">Type the recovery code you wrote down at setup, then choose a new password.</p>' +
+      '<div class="field"><label for="rc">Recovery code</label><input type="text" id="rc" autocomplete="off" placeholder="XXXX-XXXX-XXXX"></div>' +
+      '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div><p class="err" id="rerr"></p>',
+      buttons: [{ label: "Cancel", value: false }, { label: "Reset password", value: true, kind: "btn-primary", check: async () => {
+        const code = $("#rc").value.toUpperCase().replace(/[^A-Z0-9]/g, ""); const r = D.settings.recovery;
+        if (!r || (await pwHash(code, r.salt)) !== r.hash) { $("#rerr").textContent = "That recovery code isn't right."; return false; }
+        const p = pwProblem($("#np").value, $("#np2").value); if (p) { $("#rerr").textContent = p; return false; }
+        await setPassword(emp, $("#np").value); emp.mustChange = false; await saveEmp(emp);
+        S.emp = emp; await logChange("Reset the manager password with the recovery code"); S.emp = null; return true;
+      } }] });
+    if (v) toast("Password reset. Sign in with the new one.");
+  });
+}
+async function changePassword(forced) {
+  const emp = S.emp;
+  return ask({ title: forced ? "Choose a new password" : "Change your password", html: (forced ? '<p class="muted">Your password was reset. Choose a new one that only you know.</p>' : "") +
+    (forced ? "" : '<div class="field"><label for="op">Current password</label><input type="password" id="op"></div>') +
+    '<div class="grid2"><div class="field"><label for="np">New password</label><input type="password" id="np"></div><div class="field"><label for="np2">Type it again</label><input type="password" id="np2"></div></div><p class="err" id="perr"></p>',
+    buttons: (forced ? [] : [{ label: "Cancel", value: false }]).concat([{ label: "Save password", value: true, kind: "btn-primary", check: async () => {
+      if (!forced && !(await checkPassword(emp, $("#op").value))) { $("#perr").textContent = "Your current password isn't right."; return false; }
+      const p = pwProblem($("#np").value, $("#np2").value); if (p) { $("#perr").textContent = p; return false; }
+      await setPassword(emp, $("#np").value); emp.mustChange = false; await saveEmp(emp); return true;
+    } }]) }).then(v => { if (v) toast("Password saved."); return v; });
+}
+async function viewNewAccount() {
+  view().innerHTML = '<div class="narrow"><div class="card">' + backBtn("Cancel") +
+    '<div class="card-head"><h2>Make your account</h2><p class="muted">Your name shows on the time clock. Your password keeps your time card private.</p></div>' +
+    '<div class="grid2"><div class="field"><label for="n-first">First name</label><input type="text" id="n-first" autocomplete="off"></div>' +
+    '<div class="field"><label for="n-last">Last name</label><input type="text" id="n-last" autocomplete="off"></div></div>' +
+    '<div class="field"><label for="n-pos">Position</label><input type="text" id="n-pos" autocomplete="off"></div>' +
+    '<div class="grid2"><div class="field"><label for="n-pw">Password</label><input type="password" id="n-pw" autocomplete="new-password"></div>' +
+    '<div class="field"><label for="n-pw2">Type it again</label><input type="password" id="n-pw2" autocomplete="new-password"></div></div>' +
+    '<p class="err" id="n-err"></p><button class="btn btn-primary btn-lg btn-block" type="button" id="n-go">Make my account</button></div></div>';
+  $("#back").addEventListener("click", () => go("home"));
+  $("#n-go").addEventListener("click", async () => {
+    const first = $("#n-first").value.trim(), last = $("#n-last").value.trim(), position = $("#n-pos").value.trim();
+    await loadEmps();
+    let err = !first || !last ? "Type your first and last name." : !position ? "Type your position." : pwProblem($("#n-pw").value, $("#n-pw2").value);
+    if (!err && D.emps.some(e => fullName(e).toLowerCase() === (first + " " + last).toLowerCase())) err = "There's already an account with that name. Tap your name on the home screen instead.";
+    if (err) { $("#n-err").textContent = err; return; }
+    const emp = { id: uid(), first, last, position, admin: false, hourly: true, active: true, created: Date.now(), ptoStart: 0, sickStart: 0, isNew: true };
+    try {
+      await setPassword(emp, $("#n-pw").value); await saveEmp(emp); await loadEmps();
+      signIn(emp); await logChange("New account: " + fullName(emp) + " (" + position + ")");
+      toast("Welcome, " + first + "! Your account is ready."); go("me");
+    } catch (e) { showError(e); }
+  });
+}
+
+/* ================================================================ an employee's own page */
+function weekTable(w, { admin = false } = {}) {
+  const rows = w.days.map((d, i) => {
+    const wkend = i >= 5;
+    if (wkend && !d.pairs.length && !d.entries.length) return "";
+    const pairs = d.pairs.map(p => {
+      const a = p.in ? fmtTime(p.in.at) : "—", b = p.out ? fmtTime(p.out.at) : p.live ? "now" : "—";
+      const ed = admin ? (p.in ? '<button class="linke" data-edit="' + p.in.id + '" title="Change the time in">edit in</button>' : "") + (p.out ? '<button class="linke" data-edit="' + p.out.id + '" title="Change the time out">edit out</button>' : "") +
+        '<button class="linkx" data-void-pair="' + [p.in && p.in.id, p.out && p.out.id].filter(Boolean).join(",") + '" title="Remove">remove</button>' : "";
+      const flag = (p.in && p.in.tampered) || (p.out && p.out.tampered) ? ' <span class="tag bad" title="This punch was changed outside the program">edited outside</span>' : "";
+      const how = (p.in && p.in.how !== "clock") || (p.out && p.out.how !== "clock") ? ' <span class="tag" title="Entered by hand or from a request, not with the clock button">added</span>' : "";
+      return '<span class="pair' + (p.live ? " open" : p.bad ? " bad" : "") + '">' + a + ' – ' + b + (p.bad ? " (" + esc(p.bad) + ")" : "") + '</span>' + how + flag + ed;
+    }).join("");
+    const ents = d.entries.filter(x => !(x.cat === "estimated" && d.est && d.est.replaced) || admin).map(x => (x.cat === "estimated" && d.est && d.est.replaced ? "" : catTag(x.cat, hrs(x.hours) + " h")) + (x.note ? ' <span class="hint">' + esc(x.note) + '</span>' : "") +
+      (admin ? (x.auto ? ' <button class="linkx" data-hol-off="' + d.key + '">remove</button>' : x.id ? ' <button class="linkx" data-void="' + x.id + '" data-cat="' + x.cat + '" data-h="' + x.hours + '">remove</button>' : "") : "")).join(" ");
+    const est = d.est && d.est.replaced ? ' <span class="tag est" title="The estimate no longer counts">Estimated ' + hrs(d.est.hours) + ' h → actual ' + hrs(d.worked) + ' h</span>' : "";
+    const live = w.clockedIn && dayKey(w.clockedIn.at) === d.key ? ' <span class="hint">(+' + hm(w.liveMin / 60) + ' so far)</span>' : "";
+    return '<tr' + (wkend ? ' class="weekend"' : "") + '><td class="day">' + esc(fmtDay(d.key)) + '</td><td><div class="punches">' + (pairs || (d.entries.length ? "" : '<span class="hint">—</span>')) + '</div>' +
+      (ents || est ? '<div class="flags" style="margin-top:6px">' + ents + est + '</div>' : "") + '</td><td class="num">' + (d.worked ? hrs(d.worked) + live : live || "") + '</td></tr>';
+  }).join("");
+  return '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Day</th><th>Time in – time out</th><th class="num">Hours worked</th></tr></thead><tbody>' + rows +
+    '</tbody><tfoot><tr><td>Total</td><td></td><td class="num">' + hrs(w.worked) + '</td></tr></tfoot></table></div>';
+}
+function statsBlock(w, bal) {
+  const s = (l, v, hi, em) => '<div class="stat' + (hi ? " hi" : "") + '"><span>' + l + '</span><b>' + v + '</b>' + (em || "") + '</div>';
+  return '<div class="stats">' + s("Worked", hrs(w.worked), true) + s("Overtime", hrs(w.ot), false, w.ot ? '<em style="color:var(--' + (w.otStatus === "approved" ? "good" : "warn") + ')">' + (w.otStatus === "approved" ? "Approved" : "Needs approval") + '</em>' : "") +
+    s("PTO", hrs(w.pto)) + s("Sick", hrs(w.sick)) + s("Holiday", hrs(w.holiday)) + s("Total paid", hrs(w.total), true) + '</div>' +
+    (bal ? '<p class="hint">Balance left: <b>' + hrs(bal.pto) + ' h PTO</b> · <b>' + hrs(bal.sick) + ' h sick leave</b></p>' : "");
+}
+async function viewMe(opts = {}) {
+  if (!S.emp) return go("home");
+  const emp = S.emp;
+  const thisWk = weekOf(new Date());
+  const wk = opts.wk || thisWk;
+  const [w, bal, reqs, meta] = await Promise.all([weekFor(emp, wk), balances(emp), loadRequests(), weekMeta(wk)]);
+  const mine = reqs.filter(r => r.emp === emp.id).slice(0, 8);
+  const cur = wk === thisWk;
+  const isIn = cur && !!w.clockedIn;
+  view().innerHTML =
+    (cur ? '<div class="card clock-card"><div><h2>Hi, ' + esc(emp.first) + '</h2><p class="state">' +
+      (isIn ? 'You\'re <b>clocked in</b> since ' + fmtTime(w.clockedIn.at) + '.' : 'You\'re <b>clocked out</b>.') + ' It\'s ' + fmtTime(Date.now()) + '.</p>' +
+      (w.issues.length ? '<div class="note warn" style="margin-top:10px"><b>Missed punch</b><span>' + w.issues.map(esc).join("<br>") + '. Use “Fix a missed punch” below.</span></div>' : "") + '</div>' +
+      '<button class="bigbtn ' + (isIn ? "out" : "in") + '" type="button" id="punch">' + (isIn ? "Clock out" : "Clock in") + '</button></div>' : "") +
+    '<div class="card"><div class="wk-nav"><button class="navbtn" id="prev" aria-label="Previous week">‹</button><div><div class="lbl">' + esc(weekLabel(wk)) + '</div><div class="sub">' + esc(weekRange(wk)) + (meta.locked ? " · Paid (locked)" : "") + '</div></div>' +
+    '<button class="navbtn" id="next" aria-label="Next week"' + (cur ? " disabled" : "") + '>›</button></div>' +
+    statsBlock(w, bal) + weekTable(w) +
+    '<div class="row no-print">' +
+    (!meta.locked ? '<button class="btn btn-secondary" type="button" id="req-off">Request time off</button><button class="btn btn-secondary" type="button" id="req-fix">Fix a missed punch</button>' : "") +
+    (w.signed && !w.changedAfterSign ? '<span class="tag ok">You confirmed these hours ' + esc(fmtStamp(w.signed.created)) + '</span>' : '<button class="btn btn-secondary" type="button" id="confirm">My hours are correct</button>') +
+    '</div></div>' +
+    '<div class="card"><div class="card-head"><h3>My requests</h3></div>' + (mine.length ? '<div class="list">' + mine.map(reqRow).join("") + '</div>' : '<p class="muted">No requests yet.</p>') + '</div>' +
+    '<div class="row no-print"><button class="btn btn-text" type="button" id="chpw">Change my password</button>' + (emp.admin ? '<button class="btn btn-primary" type="button" id="mgr">Manage time cards</button>' : "") + '</div>';
+  if ($("#punch")) $("#punch").addEventListener("click", async (e) => {
+    const b = e.currentTarget; b.disabled = true;
+    try {
+      const t = Date.now(); const dir = isIn ? "out" : "in";
+      await addEvent(weekOf(t), emp.id, { type: "punch", dir, at: t, how: "clock" });
+      const over = dir === "out" && (await weekFor(emp, weekOf(t))).ot > 0;
+      toast((dir === "in" ? "Clocked in at " : "Clocked out at ") + fmtTime(t) + "." + (over ? " You're over 40 hours this week, so the overtime goes to the manager to approve." : "") + (emp.admin ? "" : " Signing you out…"), over ? 6000 : 3500);
+      if (!emp.admin) setTimeout(() => { if (S.emp && S.emp.id === emp.id && current.name === "me") signOut(); }, over ? 5000 : 2500);
+      go("me");
+    } catch (err) { b.disabled = false; showError(err); }
+  });
+  $("#prev").addEventListener("click", () => go("me", { wk: shiftWeek(wk, -1) }));
+  $("#next").addEventListener("click", () => go("me", { wk: shiftWeek(wk, 1) }));
+  if ($("#req-off")) $("#req-off").addEventListener("click", () => requestTimeOff(emp, wk));
+  if ($("#req-fix")) $("#req-fix").addEventListener("click", () => requestFix(emp, wk));
+  if ($("#confirm")) $("#confirm").addEventListener("click", async () => {
+    const v = await ask({ title: "Confirm your hours", text: "By confirming, you agree the hours shown for " + weekLc(wk) + " are correct: " + hrs(w.worked) + " hours worked" + (w.pto + w.sick + w.holiday ? ", plus " + hrs(w.pto + w.sick + w.holiday) + " hours of PTO, sick or holiday" : "") + ".", buttons: [{ label: "Cancel", value: false }, { label: "Confirm", value: true, kind: "btn-primary" }] });
+    if (v) { await addEvent(wk, emp.id, { type: "signoff" }); toast("Thanks, your hours are confirmed."); go("me", { wk }); }
+  });
+  $("#chpw").addEventListener("click", () => changePassword(false));
+  if ($("#mgr")) $("#mgr").addEventListener("click", () => go("manage", { tab: "week" }));
+}
+function reqRow(r) {
+  const st = r.status === "approved" ? '<span class="tag ok">Approved</span>' : r.status === "denied" ? '<span class="tag bad">Not approved</span>' : '<span class="tag warn">Waiting for approval</span>';
+  return '<div class="item-row"><div><span class="t">' + esc(reqTitle(r)) + '</span><span class="s">' + esc(reqDetail(r)) + '</span>' + (r.reply ? '<span class="s">Manager: ' + esc(r.reply) + '</span>' : "") + '</div>' + st + '</div>';
+}
+const reqTitle = (r) => r.kind === "fix" ? "Missed punch, " + fmtDay(r.date) : (CATS[r.kind] || r.kind) + ", " + (r.dates || [r.date]).map(fmtDay).join(", ");
+const reqDetail = (r) => r.kind === "fix" ? [r.inTime ? "in " + fmtTime(at(r.date, r.inTime)) : "", r.outTime ? "out " + fmtTime(at(r.date, r.outTime)) : ""].filter(Boolean).join(", ") + (r.note ? " · " + r.note : "")
+  : hrs(r.hours) + " hours a day" + (r.note ? " · " + r.note : "");
+async function requestTimeOff(emp, wk) {
+  const today = dayKey(new Date());
+  const v = await ask({ title: "Request time off", wide: true, html:
+    '<div class="field"><label>Type</label><div class="row"><label class="check"><input type="radio" name="k" value="pto" checked><span><b>PTO</b></span></label><label class="check"><input type="radio" name="k" value="sick"><span><b>Sick leave</b></span></label></div></div>' +
+    '<div class="grid2"><div class="field"><label for="d1">First day</label><input type="date" id="d1" value="' + today + '"></div><div class="field"><label for="d2">Last day</label><input type="date" id="d2" value="' + today + '"></div></div>' +
+    '<div class="field" style="max-width:220px"><label for="h">Hours each day</label><input type="number" id="h" value="8" min="0.25" max="12" step="0.25"></div>' +
+    '<div class="field"><label for="nt">Note (optional)</label><input type="text" id="nt"></div><p class="hint">Weekdays only. The manager approves it before it counts.</p><p class="err" id="rerr"></p>',
+    buttons: [{ label: "Cancel", value: null }, { label: "Send request", value: "go", kind: "btn-primary", check: async () => {
+      const d1 = $("#d1").value, d2 = $("#d2").value, h = Number($("#h").value);
+      if (!d1 || !d2 || d2 < d1) { $("#rerr").textContent = "Choose the first and last day."; return false; }
+      if (!(h > 0 && h <= 12)) { $("#rerr").textContent = "Hours each day must be between 0.25 and 12."; return false; }
+      if ((await weekMeta(weekOf(fromKey(d1)))).locked) { $("#rerr").textContent = "That week has already been paid. Ask the manager to add it."; return false; }
+      return true;
+    } }] });
+  if (v !== "go") return;
+  const dates = []; for (let d = fromKey($("#d1").value); dayKey(d) <= $("#d2").value; d = addDays(d, 1)) if (d.getDay() % 6) dates.push(dayKey(d));
+  if (!dates.length) return alertBox("No weekdays chosen", "Time off only counts on weekdays.");
+  const r = { id: uid(), emp: emp.id, kind: $('input[name="k"]:checked').value, dates, date: dates[0], hours: r2(Number($("#h").value)), note: $("#nt").value.trim(), status: "pending", created: Date.now() };
+  await saveRequest(r); toast("Request sent to the manager."); go("me", { wk });
+}
+async function requestFix(emp, wk) {
+  const today = dayKey(new Date());
+  const v = await ask({ title: "Fix a missed punch", wide: true, html:
+    '<p class="muted">Forgot to clock in or out? Enter the right time. It counts once the manager approves it.</p>' +
+    '<div class="field" style="max-width:240px"><label for="fd">Day</label><input type="date" id="fd" value="' + today + '" max="' + today + '"></div>' +
+    '<div class="grid2"><div class="field"><label for="fi">Time in (if you missed it)</label><input type="time" id="fi"></div><div class="field"><label for="fo">Time out (if you missed it)</label><input type="time" id="fo"></div></div>' +
+    '<div class="field"><label for="fn">What happened?</label><input type="text" id="fn" placeholder="Forgot to clock out for lunch"></div><p class="err" id="ferr"></p>',
+    buttons: [{ label: "Cancel", value: null }, { label: "Send request", value: "go", kind: "btn-primary", check: async () => {
+      if (!$("#fd").value) { $("#ferr").textContent = "Choose the day."; return false; }
+      if ((await weekMeta(weekOf(fromKey($("#fd").value)))).locked) { $("#ferr").textContent = "That week has already been paid. Ask the manager to fix it."; return false; }
+      if (!$("#fi").value && !$("#fo").value) { $("#ferr").textContent = "Enter a time in, a time out, or both."; return false; }
+      if ($("#fi").value && $("#fo").value && $("#fo").value <= $("#fi").value) { $("#ferr").textContent = "The time out has to be after the time in."; return false; }
+      return true;
+    } }] });
+  if (v !== "go") return;
+  const r = { id: uid(), emp: emp.id, kind: "fix", date: $("#fd").value, inTime: $("#fi").value || "", outTime: $("#fo").value || "", note: $("#fn").value.trim(), status: "pending", created: Date.now() };
+  await saveRequest(r); toast("Request sent to the manager."); go("me", { wk });
+}
+
+/* ================================================================ manage (managers only) */
+async function viewManage(opts = {}) {
+  if (!S.emp || !S.emp.admin) return go("home");
+  const tab = opts.tab || "week";
+  const reqs = await loadRequests();
+  await loadEmps();
+  const pend = reqs.filter(r => r.status === "pending" && D.emps.some(e => e.id === r.emp));
+  const recentWeeks = [0, -1, -2, -3].map(n => shiftWeek(weekOf(new Date()), n));
+  const otPend = [];
+  for (const wk of recentWeeks) for (const e of active().filter(e => e.hourly !== false)) { const w = await weekFor(e, wk); if (w.otStatus === "pending" || w.otStatus === "changed") otPend.push(w); }
+  const nAppr = pend.length + otPend.length;
+  const T = [["week", "Weekly hours"], ["approvals", "Approvals" + (nAppr ? ' <span class="count">' + nAppr + '</span>' : "")], ["people", "Employees"], ["holidays", "Holidays"], ["log", "Change log"], ["settings", "Settings"]];
+  view().innerHTML = '<div class="page-head no-print"><h2>Manage time cards</h2>' + (S.emp.hourly !== false ? '<div class="row"><button class="btn btn-secondary" type="button" id="my">My time clock</button></div>' : "") + '</div>' +
+    '<div class="tabs no-print" role="tablist">' + T.map(([k, l]) => '<button class="tab' + (k === tab ? " on" : "") + '" type="button" data-tab="' + k + '">' + l + '</button>').join("") + '</div><div id="pane" style="display:grid;gap:18px"></div>';
+  $$("[data-tab]").forEach(b => b.addEventListener("click", () => go("manage", { tab: b.dataset.tab })));
+  if ($("#my")) $("#my").addEventListener("click", () => go("me"));
+  const P = $("#pane");
+  if (tab === "week") return paneWeek(P, opts.wk || weekOf(new Date()));
+  if (tab === "approvals") return paneApprovals(P, pend, otPend);
+  if (tab === "people") return panePeople(P);
+  if (tab === "holidays") return paneHolidays(P, opts.year || new Date().getFullYear());
+  if (tab === "log") return paneLog(P);
+  if (tab === "settings") return paneSettings(P);
+}
+async function paneWeek(P, wk) {
+  const hourly = D.emps.filter(e => e.hourly !== false);
+  const [all, meta] = await Promise.all([Promise.all(hourly.map(e => weekFor(e, wk))), weekMeta(wk)]);
+  const ws = all.filter(w => w.emp.active !== false || w.total > 0 || w.punches.length);
+  const people = ws.map(w => w.emp);
+  const snap = meta.lock && meta.lock.snapshot || {};
+  const flagsOf = (w) => {
+    const f = [];
+    if (w.issues.length) f.push('<span class="tag bad">Missed punch</span>');
+    const ot = otTag(w); if (ot) f.push(ot);
+    if (w.estimated) f.push('<span class="tag est">' + hrs(w.estimated) + ' h estimated</span>');
+    if (w.estDiffs.length) f.push('<span class="tag est">Estimate replaced</span>');
+    if (w.tampered) f.push('<span class="tag bad">Edited outside the program</span>');
+    f.push(w.signed && !w.changedAfterSign ? '<span class="tag ok">Confirmed</span>' : '<span class="tag">Not confirmed</span>');
+    const s = snap[w.emp.id]; if (meta.locked && s && Math.abs(s.total - w.total) >= 0.01) f.push('<span class="tag warn">' + (w.total > s.total ? "+" : "") + hrs(w.total - s.total) + ' h since paid</span>');
+    return f.join("");
+  };
+  const tot = (k) => hrs(ws.reduce((s, w) => s + w[k], 0));
+  P.innerHTML = '<div class="print-only"><h2>Masterpiece Construction Experts: time cards</h2></div>' +
+    '<div class="card"><div class="page-head"><div class="wk-nav"><button class="navbtn no-print" id="prev" aria-label="Previous week">‹</button><div><div class="lbl">' + esc(weekLabel(wk)) + '</div><div class="sub">' + esc(weekRange(wk)) +
+    (meta.locked ? ' · <b>Paid / locked</b> ' + esc(fmtStamp(meta.lock.created)) : " · Open") + '</div></div><button class="navbtn no-print" id="next" aria-label="Next week"' + (wk >= weekOf(new Date()) ? " disabled" : "") + '>›</button></div>' +
+    '<div class="row no-print">' + (meta.locked ? '<button class="btn btn-secondary" type="button" id="unlock">Unlock week</button>' : '<button class="btn btn-primary" type="button" id="lock">Lock week for payroll</button>') +
+    '<button class="btn btn-secondary" type="button" id="csv">Download summary</button><button class="btn btn-secondary" type="button" id="print">Print</button></div></div>' +
+    (people.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Employee</th><th class="num">Regular</th><th class="num">Overtime</th><th class="num">PTO</th><th class="num">Sick</th><th class="num">Holiday</th><th class="num">Total paid</th><th>Notes</th></tr></thead><tbody>' +
+      ws.map((w, i) => '<tr class="click" data-emp="' + w.emp.id + '"><td><b>' + esc(fullName(w.emp)) + '</b><div class="hint">' + esc(w.emp.position || "") + '</div></td><td class="num">' + hrs(w.reg) + '</td><td class="num">' + hrs(w.ot) + '</td><td class="num">' + hrs(w.pto) + '</td><td class="num">' + hrs(w.sick) + '</td><td class="num">' + hrs(w.holiday) + '</td><td class="num"><b>' + hrs(w.total) + '</b></td><td><div class="flags">' + flagsOf(w) + '</div></td></tr>').join("") +
+      '</tbody><tfoot><tr><td>All employees</td><td class="num">' + tot("reg") + '</td><td class="num">' + tot("ot") + '</td><td class="num">' + tot("pto") + '</td><td class="num">' + tot("sick") + '</td><td class="num">' + tot("holiday") + '</td><td class="num">' + tot("total") + '</td><td></td></tr></tfoot></table></div>'
+      : '<p class="muted">No hourly employees yet.</p>') +
+    '<p class="hint no-print">Click a name to see the day-by-day time card, fix punches, add hours or approve overtime. Overtime is anything over ' + OT_LIMIT + ' hours worked in the week; PTO, sick and holiday hours don\'t count toward it.</p></div>';
+  $("#prev").addEventListener("click", () => go("manage", { tab: "week", wk: shiftWeek(wk, -1) }));
+  $("#next").addEventListener("click", () => go("manage", { tab: "week", wk: shiftWeek(wk, 1) }));
+  $$("tr[data-emp]").forEach(r => r.addEventListener("click", () => go("empweek", { id: r.dataset.emp, wk })));
+  $("#print").addEventListener("click", () => window.print());
+  $("#csv").addEventListener("click", () => download(csvName(wk), summaryCsv(wk, ws)));
+  if ($("#lock")) $("#lock").addEventListener("click", async () => {
+    const pendOt = ws.filter(w => w.otStatus === "pending" || w.otStatus === "changed").length, miss = ws.filter(w => w.issues.length).length;
+    const warn = [pendOt ? pendOt + " overtime approval" + (pendOt > 1 ? "s are" : " is") + " still waiting" : "", miss ? miss + " time card" + (miss > 1 ? "s have" : " has") + " a missed punch" : ""].filter(Boolean);
+    const v = await ask({ title: "Lock this week for payroll?", text: "This records the hours you're paying for " + weekLc(wk) + " and saves a summary to the Payroll summaries folder. Employees can't send requests for a locked week. If hours change afterward (for example, Friday was estimated), the difference shows next to each name." + (warn.length ? " Note: " + warn.join(" and ") + "." : ""),
+      buttons: [{ label: "Cancel", value: false }, { label: "Lock week", value: true, kind: "btn-primary" }] });
+    if (!v) return;
+    const snapshot = {}; ws.forEach(w => { snapshot[w.emp.id] = snapOf(w); });
+    await addWeekMeta(wk, { type: "lock", snapshot });
+    try { await writeText(["Payroll summaries"], csvName(wk), summaryCsv(wk, ws)); } catch (_) {}
+    await logChange("Locked " + weekLc(wk) + " for payroll");
+    toast("Week locked. Summary saved in the Payroll summaries folder."); go("manage", { tab: "week", wk });
+  });
+  if ($("#unlock")) $("#unlock").addEventListener("click", async () => {
+    const v = await ask({ title: "Unlock this week?", text: "Employees will be able to send requests for this week again.", buttons: [{ label: "Cancel", value: false }, { label: "Unlock", value: true, kind: "btn-primary" }] });
+    if (!v) return;
+    await addWeekMeta(wk, { type: "unlock" }); await logChange("Unlocked " + weekLc(wk)); go("manage", { tab: "week", wk });
+  });
+}
+const csvName = (wk) => "Week ending " + fridayOf(wk) + ".csv";
+const csvCell = (v) => /[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v);
+function summaryCsv(wk, ws) {
+  const rows = [["Masterpiece Construction Experts time cards", weekLabel(wk)], [], ["Employee", "Position", "Regular hours", "Overtime hours", "Overtime approved", "PTO hours", "Sick hours", "Holiday hours", "Total paid hours", "Notes"]];
+  for (const w of ws) rows.push([fullName(w.emp), w.emp.position || "", hrs(w.reg), hrs(w.ot), w.ot ? (w.otStatus === "approved" ? "Yes" : "No") : "", hrs(w.pto), hrs(w.sick), hrs(w.holiday), hrs(w.total),
+    [w.issues.length ? "Missed punch" : "", w.estimated ? hrs(w.estimated) + " h estimated" : "", w.signed && !w.changedAfterSign ? "Confirmed by employee" : "Not confirmed"].filter(Boolean).join("; ")]);
+  return rows.map(r => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+function download(name, text) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], { type: "text/csv" })); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+
+/* one employee's week, for the manager */
+async function viewEmpWeek({ id, wk }) {
+  if (!S.emp || !S.emp.admin) return go("home");
+  await loadEmps();
+  const emp = D.emps.find(e => e.id === id); if (!emp) return go("manage");
+  const [w, meta, bal] = await Promise.all([weekFor(emp, wk), weekMeta(wk), balances(emp)]);
+  const s = meta.lock && meta.lock.snapshot && meta.lock.snapshot[emp.id];
+  view().innerHTML = backBtn("Weekly hours") +
+    '<div class="card"><div class="page-head"><div><h2>' + esc(fullName(emp)) + '</h2><p class="muted">' + esc(emp.position || "") + ' · ' + esc(weekLabel(wk)) + ' (' + esc(weekRange(wk)) + ')' + (meta.locked ? " · Paid / locked" : "") + '</p></div>' +
+    '<div class="wk-nav no-print"><button class="navbtn" id="prev" aria-label="Previous week">‹</button><button class="navbtn" id="next" aria-label="Next week"' + (wk >= weekOf(new Date()) ? " disabled" : "") + '>›</button></div></div>' +
+    (meta.locked ? '<div class="note warn"><b>This week is locked for payroll.</b><span>You can still fix it. Any change shows as a difference to carry into the next payroll' + (s ? ": paid " + hrs(s.total) + " h, now " + hrs(w.total) + " h." : ".") + '</span></div>' : "") +
+    (w.issues.length ? '<div class="note bad"><b>Missed punches</b><span>' + w.issues.map(esc).join("<br>") + '</span></div>' : "") +
+    (w.tampered ? '<div class="note bad"><b>Changed outside the program</b><span>Something on this time card was edited directly in the folder, not in the program. Those entries are marked.</span></div>' : "") +
+    w.estDiffs.map(x => '<div class="note warn"><b>' + esc(fmtDay(x.date)) + ' was estimated at ' + hrs(x.est) + ' h</b><span>Actual hours: ' + hrs(x.actual) + ' h (' + (x.actual - x.est >= 0 ? "+" : "") + hrs(x.actual - x.est) + ' h). The actual hours count now.</span></div>').join("") +
+    statsBlock(w, bal) +
+    (w.ot ? '<div class="note ' + (w.otStatus === "approved" ? "ok" : "warn") + '"><b>Overtime: ' + hrs(w.ot) + ' h</b><span>' +
+      (w.otStatus === "approved" ? "Approved." : w.otStatus === "changed" ? "You approved " + hrs(w.otApproved) + " h, but the hours have changed since." : "Over " + OT_LIMIT + " hours worked this week. Overtime is paid at the overtime rate.") + '</span>' +
+      (w.otStatus !== "approved" ? '<div class="row" style="margin-top:8px"><button class="btn btn-primary mini" type="button" id="ot-ok">Approve ' + hrs(w.ot) + ' h overtime</button></div>' : "") + '</div>' : "") +
+    weekTable(w, { admin: true }) +
+    '<div class="row no-print"><button class="btn btn-secondary" type="button" id="add-punch">+ Add time in / out</button><button class="btn btn-secondary" type="button" id="add-hours">+ Add hours</button><button class="btn btn-secondary" type="button" id="print">Print time card</button></div>' +
+    '<p class="hint">Use <b>Add hours</b> for PTO, sick leave or a holiday, or for <b>Estimated</b> hours when payroll is done before the week ends (for example, Friday on a Thursday payroll). When the real hours come in, they replace the estimate and the difference is shown.</p>' +
+    '<div class="print-only" style="margin-top:40px">Employee signature: ______________________ &nbsp; Date: __________ &nbsp;&nbsp; Manager: ______________________</div></div>';
+  $("#back").addEventListener("click", () => go("manage", { tab: "week", wk }));
+  $("#prev").addEventListener("click", () => go("empweek", { id, wk: shiftWeek(wk, -1) }));
+  $("#next").addEventListener("click", () => go("empweek", { id, wk: shiftWeek(wk, 1) }));
+  $("#print").addEventListener("click", () => window.print());
+  const again = () => go("empweek", { id, wk });
+  if ($("#ot-ok")) $("#ot-ok").addEventListener("click", async () => { await addEvent(wk, id, { type: "ot", hours: w.ot }); await logChange("Approved " + hrs(w.ot) + " h overtime for " + fullName(emp) + ", " + weekLc(wk)); toast("Overtime approved."); again(); });
+  $("#add-punch").addEventListener("click", async () => { if (await addPunchDialog(emp, wk)) again(); });
+  $("#add-hours").addEventListener("click", async () => { if (await addHoursDialog(emp, wk)) again(); });
+  $$("[data-edit]").forEach(b => b.addEventListener("click", async () => {
+    const p = w.punches.find(x => x.id === b.dataset.edit); if (!p) return;
+    const v = await ask({ title: "Change the time " + (p.dir === "in" ? "in" : "out"), html: '<p class="muted">' + esc(fmtLong(dayKey(p.at))) + '</p><div class="field" style="max-width:220px"><label for="tt">Time ' + p.dir + '</label><input type="time" id="tt" value="' + timeVal(p.at) + '"></div><div class="field"><label for="why">Reason</label><input type="text" id="why"></div>',
+      buttons: [{ label: "Cancel", value: false }, { label: "Save", value: true, kind: "btn-primary", check: () => !!$("#tt").value }] });
+    if (!v) return;
+    const nt = at(dayKey(p.at), $("#tt").value);
+    await addEvent(wk, id, { type: "move", target: p.id, at: nt, note: $("#why").value.trim() });
+    await logChange("Changed " + fullName(emp) + "'s time " + p.dir + " on " + fmtDay(dayKey(p.at)) + " from " + fmtTime(p.at) + " to " + fmtTime(nt) + ($("#why").value.trim() ? " (" + $("#why").value.trim() + ")" : ""));
+    again();
+  }));
+  $$("[data-void-pair]").forEach(b => b.addEventListener("click", async () => {
+    const ids = b.dataset.voidPair.split(",").filter(Boolean); const ps = ids.map(i => w.punches.find(x => x.id === i)).filter(Boolean);
+    const v = await ask({ title: "Remove this time?", text: ps.map(p => "Time " + p.dir + " " + fmtTime(p.at)).join(", ") + " on " + fmtDay(dayKey(ps[0].at)) + " will no longer count. It stays in the change log.", buttons: [{ label: "Cancel", value: false }, { label: "Remove", value: true, kind: "btn-danger-solid" }] });
+    if (!v) return;
+    for (const p of ps) await addEvent(wk, id, { type: "void", target: p.id });
+    await logChange("Removed " + fullName(emp) + "'s " + ps.map(p => "time " + p.dir + " " + fmtTime(p.at)).join(" and ") + " on " + fmtDay(dayKey(ps[0].at)));
+    again();
+  }));
+  $$("[data-void]").forEach(b => b.addEventListener("click", async () => {
+    const cat = b.dataset.cat, h = Number(b.dataset.h);
+    const v = await ask({ title: "Remove these hours?", text: hrs(h) + " h " + (CATS[cat] || cat) + " will be removed" + (cat === "pto" || cat === "sick" ? " and added back to the balance." : "."), buttons: [{ label: "Cancel", value: false }, { label: "Remove", value: true, kind: "btn-danger-solid" }] });
+    if (!v) return;
+    await addEvent(wk, id, { type: "void", target: b.dataset.void });
+    if (cat === "pto" || cat === "sick") await addLedger(id, cat, h, "Removed from " + weekLc(wk));
+    await logChange("Removed " + hrs(h) + " h " + (CATS[cat] || cat) + " from " + fullName(emp) + ", " + weekLc(wk)); again();
+  }));
+  $$("[data-hol-off]").forEach(b => b.addEventListener("click", async () => {
+    const d = b.dataset.holOff;
+    const v = await ask({ title: "Remove the holiday for " + emp.first + "?", text: "Only " + fullName(emp) + "'s holiday hours on " + fmtDay(d) + " are removed.", buttons: [{ label: "Cancel", value: false }, { label: "Remove", value: true, kind: "btn-danger-solid" }] });
+    if (!v) return;
+    await addEvent(wk, id, { type: "holiday_off", date: d }); await logChange("Removed holiday hours on " + fmtDay(d) + " for " + fullName(emp)); again();
+  }));
+}
+function dayOptions(wk, sel) { return weekDays(wk).map((k, i) => '<option value="' + k + '"' + (k === sel ? " selected" : "") + '>' + esc(fmtDay(k)) + (i >= 5 ? " (weekend)" : "") + '</option>').join(""); }
+async function addPunchDialog(emp, wk) {
+  const today = dayKey(new Date()); const def = weekDays(wk).includes(today) ? today : wk;
+  const v = await ask({ title: "Add time in / out for " + emp.first, wide: true, html:
+    '<div class="field" style="max-width:260px"><label for="pd">Day</label><select id="pd">' + dayOptions(wk, def) + '</select></div>' +
+    '<div class="grid2"><div class="field"><label for="pi">Time in</label><input type="time" id="pi"></div><div class="field"><label for="po">Time out</label><input type="time" id="po"></div></div>' +
+    '<div class="field"><label for="pn">Reason</label><input type="text" id="pn" placeholder="Forgot to clock in"></div><p class="hint">Leave one blank to add just a time in or just a time out.</p><p class="err" id="perr"></p>',
+    buttons: [{ label: "Cancel", value: false }, { label: "Add", value: true, kind: "btn-primary", check: () => {
+      if (!$("#pi").value && !$("#po").value) { $("#perr").textContent = "Enter a time in, a time out, or both."; return false; }
+      if ($("#pi").value && $("#po").value && $("#po").value <= $("#pi").value) { $("#perr").textContent = "The time out has to be after the time in."; return false; }
+      return true;
+    } }] });
+  if (!v) return false;
+  const d = $("#pd").value, note = $("#pn").value.trim(), bits = [];
+  if ($("#pi").value) { await addEvent(wk, emp.id, { type: "punch", dir: "in", at: at(d, $("#pi").value), how: "added", note }); bits.push("in " + fmtTime(at(d, $("#pi").value))); }
+  if ($("#po").value) { await addEvent(wk, emp.id, { type: "punch", dir: "out", at: at(d, $("#po").value), how: "added", note }); bits.push("out " + fmtTime(at(d, $("#po").value))); }
+  await logChange("Added time " + bits.join(" and ") + " on " + fmtDay(d) + " for " + fullName(emp) + (note ? " (" + note + ")" : ""));
+  return true;
+}
+async function addHoursDialog(emp, wk) {
+  const today = dayKey(new Date()); const def = weekDays(wk).includes(today) ? today : wk;
+  const v = await ask({ title: "Add hours for " + emp.first, wide: true, html:
+    '<div class="grid2"><div class="field"><label for="hc">Kind</label><select id="hc"><option value="pto">PTO</option><option value="sick">Sick leave</option><option value="holiday">Holiday</option><option value="estimated">Estimated (payroll before the day is worked)</option><option value="worked">Worked (no clock times)</option></select></div>' +
+    '<div class="field"><label for="hd">Day</label><select id="hd">' + dayOptions(wk, def) + '</select></div></div>' +
+    '<div class="field" style="max-width:200px"><label for="hh">Hours</label><input type="number" id="hh" value="8" min="0.25" max="24" step="0.25"></div>' +
+    '<div class="field"><label for="hn">Note</label><input type="text" id="hn"></div><p class="hint">PTO and sick hours come out of the balance.</p><p class="err" id="herr"></p>',
+    buttons: [{ label: "Cancel", value: false }, { label: "Add hours", value: true, kind: "btn-primary", check: () => { const h = Number($("#hh").value); if (!(h > 0 && h <= 24)) { $("#herr").textContent = "Hours must be between 0.25 and 24."; return false; } return true; } }] });
+  if (!v) return false;
+  const cat = $("#hc").value, d = $("#hd").value, h = r2(Number($("#hh").value)), note = $("#hn").value.trim();
+  await addEvent(wk, emp.id, { type: "hours", cat, date: d, hours: h, note });
+  if (cat === "pto" || cat === "sick") await addLedger(emp.id, cat, -h, (CATS[cat]) + " on " + fmtDay(d));
+  await logChange("Added " + hrs(h) + " h " + CATS[cat] + " on " + fmtDay(d) + " for " + fullName(emp) + (note ? " (" + note + ")" : ""));
+  return true;
+}
+
+/* approvals */
+async function paneApprovals(P, pend, otPend) {
+  const bal = {};
+  for (const r of pend) if (r.kind !== "fix" && !bal[r.emp]) { const e = D.emps.find(x => x.id === r.emp); if (e) bal[r.emp] = await balances(e); }
+  const balNote = (r) => { const b = bal[r.emp]; if (!b) return ""; const left = b[r.kind]; const need = r.hours * (r.dates || [r.date]).length;
+    return ' · balance ' + hrs(left) + ' h' + (need > left + 0.001 ? ' (not enough, would go to ' + hrs(left - need) + ' h)' : ""); };
+  P.innerHTML = '<div class="card"><div class="card-head"><h3>Waiting for you</h3><p class="muted">Time off, sick leave, missed punches and overtime from the last 4 weeks.</p></div>' +
+    (pend.length || otPend.length ? '<div class="list">' +
+      otPend.map(w => '<div class="item-row"><div><span class="t">Overtime: ' + esc(fullName(w.emp)) + ', ' + hrs(w.ot) + ' h</span><span class="s">' + esc(weekLabel(w.wk)) + ' · ' + hrs(w.worked) + ' h worked' + (w.otStatus === "changed" ? " · changed since you approved " + hrs(w.otApproved) + " h" : "") + '</span></div>' +
+        '<div class="row"><button class="btn btn-secondary mini" data-view="' + w.emp.id + '|' + w.wk + '">View time card</button><button class="btn btn-primary mini" data-ot="' + w.emp.id + '|' + w.wk + '|' + w.ot + '">Approve</button></div></div>').join("") +
+      pend.map(r => '<div class="item-row"><div><span class="t">' + esc(nameOf(r.emp)) + ': ' + esc(reqTitle(r)) + '</span><span class="s">' + esc(reqDetail(r)) + esc(balNote(r)) + ' · sent ' + esc(fmtStamp(r.created)) + '</span></div>' +
+        '<div class="row"><button class="btn btn-secondary mini" data-deny="' + r.id + '">Don\'t approve</button><button class="btn btn-primary mini" data-approve="' + r.id + '">Approve</button></div></div>').join("") + '</div>'
+      : '<p class="muted">Nothing waiting. 🎉</p>') + '</div>';
+  $$("[data-view]").forEach(b => b.addEventListener("click", () => { const [id, wk] = b.dataset.view.split("|"); go("empweek", { id, wk }); }));
+  $$("[data-ot]").forEach(b => b.addEventListener("click", async () => {
+    const [id, wk, h] = b.dataset.ot.split("|");
+    await addEvent(wk, id, { type: "ot", hours: Number(h) }); await logChange("Approved " + hrs(Number(h)) + " h overtime for " + nameOf(id) + ", " + weekLc(wk));
+    toast("Overtime approved."); go("manage", { tab: "approvals" });
+  }));
+  const decide = async (rid, ok) => {
+    const r = pend.find(x => x.id === rid); if (!r) return;
+    const v = await ask({ title: (ok ? "Approve " : "Don't approve ") + nameOf(r.emp).split(" ")[0] + "'s request?", text: reqTitle(r) + " · " + reqDetail(r),
+      html: '<div class="field"><label for="rp">Note to ' + esc(nameOf(r.emp).split(" ")[0]) + ' (optional)</label><input type="text" id="rp"></div>',
+      buttons: [{ label: "Cancel", value: false }, { label: ok ? "Approve" : "Don't approve", value: true, kind: ok ? "btn-primary" : "btn-danger-solid" }] });
+    if (!v) return;
+    r.reply = $("#rp") ? $("#rp").value.trim() : "";
+    if (ok) {
+      if (r.kind === "fix") {
+        const wk = weekOf(fromKey(r.date));
+        if (r.inTime) await addEvent(wk, r.emp, { type: "punch", dir: "in", at: at(r.date, r.inTime), how: "request", note: r.note, req: r.id });
+        if (r.outTime) await addEvent(wk, r.emp, { type: "punch", dir: "out", at: at(r.date, r.outTime), how: "request", note: r.note, req: r.id });
+      } else {
+        for (const d of r.dates || [r.date]) {
+          await addEvent(weekOf(fromKey(d)), r.emp, { type: "hours", cat: r.kind, date: d, hours: r.hours, note: r.note, req: r.id });
+          await addLedger(r.emp, r.kind, -r.hours, CATS[r.kind] + " on " + fmtDay(d));
+        }
+      }
+    }
+    r.status = ok ? "approved" : "denied"; r.decidedBy = S.emp.id; r.decided = Date.now();
+    await saveRequest(r); await logChange((ok ? "Approved " : "Didn't approve ") + nameOf(r.emp) + "'s request: " + reqTitle(r) + " (" + reqDetail(r) + ")");
+    toast(ok ? "Approved." : "Marked as not approved."); go("manage", { tab: "approvals" });
+  };
+  $$("[data-approve]").forEach(b => b.addEventListener("click", () => decide(b.dataset.approve, true)));
+  $$("[data-deny]").forEach(b => b.addEventListener("click", () => decide(b.dataset.deny, false)));
+}
+
+/* employees */
+async function panePeople(P) {
+  const bals = await Promise.all(D.emps.map(balances));
+  P.innerHTML = '<div class="card"><div class="page-head"><div class="card-head"><h3>Employees</h3><p class="muted">Employees make their own account on the time clock. You can also add someone here.</p></div><button class="btn btn-primary" type="button" id="add-emp">+ Add employee</button></div>' +
+    '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Name</th><th>Position</th><th class="num">PTO left</th><th class="num">Sick left</th><th>Status</th><th></th></tr></thead><tbody>' +
+    D.emps.map((e, i) => '<tr><td><b>' + esc(fullName(e)) + '</b>' + (e.admin ? ' <span class="tag ok">Manager</span>' : "") + (e.isNew ? ' <span class="tag warn">New</span>' : "") + '</td><td>' + esc(e.position || "") + (e.hourly === false ? ' <span class="hint">(not hourly)</span>' : "") + '</td><td class="num">' + hrs(bals[i].pto) + '</td><td class="num">' + hrs(bals[i].sick) + '</td><td>' + (e.active === false ? '<span class="tag">Inactive</span>' : '<span class="tag ok">Active</span>') + '</td>' +
+      '<td class="num"><button class="btn btn-secondary mini" data-edit-emp="' + e.id + '">Edit</button></td></tr>').join("") + '</tbody></table></div></div>';
+  $("#add-emp").addEventListener("click", () => editEmployee(null));
+  $$("[data-edit-emp]").forEach(b => b.addEventListener("click", () => editEmployee(D.emps.find(e => e.id === b.dataset.editEmp))));
+}
+async function editEmployee(emp) {
+  const isNew = !emp;
+  const e = emp ? Object.assign({}, emp) : { id: uid(), first: "", last: "", position: "", admin: false, hourly: true, active: true, created: Date.now(), ptoStart: 0, sickStart: 0 };
+  const bal = isNew ? { pto: 0, sick: 0, lines: [] } : await balances(e);
+  const pending = ask({ title: isNew ? "Add an employee" : fullName(e), wide: true, html:
+    '<div class="grid2"><div class="field"><label for="ef">First name</label><input type="text" id="ef" value="' + esc(e.first) + '"></div><div class="field"><label for="el">Last name</label><input type="text" id="el" value="' + esc(e.last) + '"></div></div>' +
+    '<div class="field"><label for="ep">Position</label><input type="text" id="ep" value="' + esc(e.position) + '"></div>' +
+    '<label class="check"><input type="checkbox" id="eh"' + (e.hourly !== false ? " checked" : "") + '><span><b>Hourly</b><span class="hint">Shows on the time clock and in weekly hours.</span></span></label>' +
+    '<label class="check"><input type="checkbox" id="ea"' + (e.admin ? " checked" : "") + '><span><b>Manager</b><span class="hint">Can approve requests, fix time cards and reset passwords.</span></span></label>' +
+    (isNew ? '<div class="field"><label for="et">Temporary password</label><input type="text" id="et" value="' + newCode().slice(0, 4).toLowerCase() + rnd().slice(0, 2) + '"><span class="hint">They choose their own the first time they sign in.</span></div>' :
+      '<label class="check"><input type="checkbox" id="ex"' + (e.active === false ? "" : " checked") + '><span><b>Active</b><span class="hint">Uncheck when someone leaves. Their time cards stay.</span></span></label>' +
+      '<div class="sep"></div><div class="row"><span><b>PTO left:</b> ' + hrs(bal.pto) + ' h · <b>Sick left:</b> ' + hrs(bal.sick) + ' h</span></div>' +
+      '<div class="grid2"><div class="field"><label for="bp">Add PTO hours (use − to take away)</label><input type="number" id="bp" step="0.25" placeholder="0"></div><div class="field"><label for="bs">Add sick hours (use − to take away)</label><input type="number" id="bs" step="0.25" placeholder="0"></div></div>' +
+      '<div class="field"><label for="bn">Reason for the balance change</label><input type="text" id="bn" placeholder="Monthly PTO"></div>' +
+      '<div class="sep"></div><div class="row"><button class="btn btn-secondary mini" type="button" id="reset-pw">Reset password</button></div>') +
+    '<p class="err" id="eerr"></p>',
+    buttons: [{ label: "Cancel", value: false }, { label: isNew ? "Add employee" : "Save", value: true, kind: "btn-primary", check: () => {
+      if (!$("#ef").value.trim() || !$("#el").value.trim()) { $("#eerr").textContent = "Type a first and last name."; return false; }
+      if (!isNew && e.admin && !$("#ea").checked && admins().filter(a => a.id !== e.id).length === 0) { $("#eerr").textContent = "There has to be at least one manager."; return false; }
+      if (!isNew && e.admin && $("#ex") && !$("#ex").checked && admins().filter(a => a.id !== e.id).length === 0) { $("#eerr").textContent = "There has to be at least one active manager."; return false; }
+      if (isNew && $("#et").value.length < 4) { $("#eerr").textContent = "The temporary password needs at least 4 characters."; return false; }
+      return true;
+    } }],
+  });
+  if ($("#reset-pw")) $("#reset-pw").addEventListener("click", async () => {
+    const tp = rnd().slice(0, 6);
+    const fresh = await readJson(["employees"], e.id + ".json") || e;
+    await setPassword(fresh, tp); fresh.mustChange = true; await saveEmp(fresh); await logChange("Reset " + fullName(fresh) + "'s password");
+    const box = $("#eerr"); box.style.color = "var(--good)"; box.textContent = "Temporary password: " + tp + ". They'll choose a new one when they sign in.";
+  });
+  const v = await pending;
+  if (v === null || v === false) return;
+  e.first = $("#ef").value.trim(); e.last = $("#el").value.trim(); e.position = $("#ep").value.trim(); e.hourly = $("#eh").checked; e.admin = $("#ea").checked; delete e.isNew;
+  if (isNew) { await setPassword(e, $("#et").value); e.mustChange = true; const tp = $("#et").value; await saveEmp(e); await logChange("Added employee " + fullName(e)); await alertBox("Employee added", fullName(e) + "'s temporary password is: " + tp + ". They'll choose their own the first time they sign in."); }
+  else {
+    e.active = $("#ex").checked;
+    const bp = Number($("#bp").value) || 0, bs = Number($("#bs").value) || 0, note = $("#bn").value.trim() || "Balance change";
+    const fresh = await readJson(["employees"], e.id + ".json"); if (fresh) { e.hash = fresh.hash; e.salt = fresh.salt; e.iter = fresh.iter; e.mustChange = fresh.mustChange; }
+    await saveEmp(e);
+    if (bp) await addLedger(e.id, "pto", bp, note);
+    if (bs) await addLedger(e.id, "sick", bs, note);
+    await logChange("Updated " + fullName(e) + (bp ? ", PTO " + (bp > 0 ? "+" : "") + hrs(bp) + " h" : "") + (bs ? ", sick " + (bs > 0 ? "+" : "") + hrs(bs) + " h" : "") + (bp || bs ? " (" + note + ")" : ""));
+    if (S.emp.id === e.id) S.emp = Object.assign(S.emp, e);
+  }
+  await loadEmps(); go("manage", { tab: "people" });
+}
+/* holidays */
+function paneHolidays(P, year) {
+  const hs = (D.settings.holidays || []).filter(h => h.date.startsWith(year + "-")).sort((a, b) => a.date.localeCompare(b.date));
+  P.innerHTML = '<div class="card"><div class="page-head"><div class="wk-nav"><button class="navbtn" id="py">‹</button><div class="lbl">Paid holidays ' + year + '</div><button class="navbtn" id="ny">›</button></div>' +
+    '<div class="row"><button class="btn btn-secondary" type="button" id="suggest">Add from the usual holidays</button><button class="btn btn-primary" type="button" id="custom">+ Add a holiday</button></div></div>' +
+    '<p class="muted">On a holiday, every hourly employee gets the holiday hours automatically. To take it off one person\'s card, open their week and remove it.</p>' +
+    (hs.length ? '<div class="list">' + hs.map(h => '<div class="item-row"><div><span class="t">' + esc(h.name) + '</span><span class="s">' + esc(fmtLong(h.date)) + ' · ' + hrs(h.hours) + ' h</span></div><button class="linkx" data-del-hol="' + h.id + '">Remove</button></div>').join("") + '</div>' : '<p class="muted">No holidays for ' + year + ' yet.</p>') + '</div>';
+  $("#py").addEventListener("click", () => go("manage", { tab: "holidays", year: year - 1 }));
+  $("#ny").addEventListener("click", () => go("manage", { tab: "holidays", year: year + 1 }));
+  $$("[data-del-hol]").forEach(b => b.addEventListener("click", async () => {
+    const h = D.settings.holidays.find(x => x.id === b.dataset.delHol);
+    const v = await ask({ title: "Remove " + h.name + "?", text: "Its hours come off everyone's time card for " + fmtDay(h.date) + ".", buttons: [{ label: "Cancel", value: false }, { label: "Remove", value: true, kind: "btn-danger-solid" }] });
+    if (!v) return;
+    await loadSettings(); D.settings.holidays = D.settings.holidays.filter(x => x.id !== h.id); await saveSettings(); await logChange("Removed holiday " + h.name + " (" + fmtDate(h.date) + ")");
+    go("manage", { tab: "holidays", year });
+  }));
+  $("#suggest").addEventListener("click", async () => {
+    const v = await ask({ title: "Usual holidays for " + year, wide: true, html: '<div class="field" style="max-width:220px"><label for="sh">Hours for each</label><input type="number" id="sh" value="8" step="0.25" min="0"></div>' + holidayChecklist(year, hs),
+      buttons: [{ label: "Cancel", value: false }, { label: "Add checked", value: true, kind: "btn-primary" }] });
+    if (!v) return;
+    const add = readChecklist($(".hol-list", dlg) || $(".hol-list"), Number($("#sh").value) || 8);
+    await loadSettings(); D.settings.holidays = (D.settings.holidays || []).concat(add); await saveSettings();
+    if (add.length) await logChange("Added holidays: " + add.map(h => h.name).join(", ") + " (" + year + ")");
+    go("manage", { tab: "holidays", year });
+  });
+  $("#custom").addEventListener("click", async () => {
+    const v = await ask({ title: "Add a holiday", html: '<div class="field"><label for="cn">Name</label><input type="text" id="cn" placeholder="Company picnic"></div><div class="grid2"><div class="field"><label for="cd">Date</label><input type="date" id="cd"></div><div class="field"><label for="ch">Hours</label><input type="number" id="ch" value="8" step="0.25" min="0"></div></div><p class="err" id="cerr"></p>',
+      buttons: [{ label: "Cancel", value: false }, { label: "Add", value: true, kind: "btn-primary", check: () => { if (!$("#cn").value.trim() || !$("#cd").value) { $("#cerr").textContent = "Type a name and choose a date."; return false; } return true; } }] });
+    if (!v) return;
+    const h = { id: uid(), name: $("#cn").value.trim(), date: $("#cd").value, hours: Number($("#ch").value) || 0 };
+    await loadSettings(); D.settings.holidays = (D.settings.holidays || []).concat([h]); await saveSettings(); await logChange("Added holiday " + h.name + " (" + fmtDate(h.date) + ", " + hrs(h.hours) + " h)");
+    go("manage", { tab: "holidays", year: +h.date.slice(0, 4) });
+  });
+}
+async function paneLog(P) {
+  const L = await loadLog();
+  P.innerHTML = '<div class="card"><div class="card-head"><h3>Change log</h3><p class="muted">Every change made by a manager, newest first. Entries can\'t be changed in the program.</p></div>' +
+    (L.length ? '<div class="tbl-wrap"><table class="tbl"><thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead><tbody>' + L.map(x => '<tr><td style="white-space:nowrap">' + esc(fmtStamp(x.t)) + '</td><td>' + esc(nameOf(x.by)) + '</td><td>' + esc(x.text) + (x._tampered ? ' <span class="tag bad">edited outside</span>' : "") + '</td></tr>').join("") + '</tbody></table></div>' : '<p class="muted">Nothing yet.</p>') + '</div>';
+}
+function paneSettings(P) {
+  const r = Number(D.settings.round) || 0;
+  P.innerHTML = '<div class="card"><div class="card-head"><h3>Rounding</h3><p class="muted">How clock times are counted. The exact times are always kept.</p></div>' +
+    '<div class="field" style="max-width:320px"><select id="round"><option value="0"' + (r === 0 ? " selected" : "") + '>Exact, to the minute</option><option value="5"' + (r === 5 ? " selected" : "") + '>Nearest 5 minutes</option><option value="15"' + (r === 15 ? " selected" : "") + '>Nearest 15 minutes</option></select></div></div>' +
+    '<div class="card"><div class="card-head"><h3>Shared folder</h3><p class="muted">' + (Store.mode === "folder" ? 'This computer saves to the <b>' + esc(Store.root.name) + '</b> folder.' : 'This preview saves in this browser only.') + ' Every office computer should use the same Google Drive folder.</p></div>' +
+    (Store.canFolder ? '<div><button class="btn btn-secondary" type="button" id="folder">Use a different folder</button></div>' : "") + '</div>' +
+    '<div class="card"><div class="card-head"><h3>Manager recovery code</h3><p class="muted">Lets a manager reset their own password if it\'s forgotten. Making a new code stops the old one from working.</p></div><div><button class="btn btn-secondary" type="button" id="recode">Make a new recovery code</button></div></div>' +
+    '<p class="foot">Masterpiece Time Clock · Version ' + APP_VERSION + '</p>';
+  $("#round").addEventListener("change", async () => {
+    await loadSettings(); D.settings.round = Number($("#round").value); await saveSettings();
+    await logChange("Changed rounding to " + ($("#round").value === "0" ? "exact minutes" : "nearest " + $("#round").value + " minutes")); toast("Saved.");
+  });
+  if ($("#folder")) $("#folder").addEventListener("click", async () => { try { await chooseFolder(); } catch (e) { if (e && e.name === "AbortError") return; return showError(e); } S.emp = null; paintBar(); enterApp(); });
+  $("#recode").addEventListener("click", async () => {
+    const code = newCode(); const salt = toHex(crypto.getRandomValues(new Uint8Array(16)));
+    await loadSettings(); D.settings.recovery = { salt, hash: await pwHash(code.replace(/-/g, ""), salt) }; await saveSettings(); await logChange("Made a new manager recovery code");
+    await ask({ title: "Your new recovery code", html: '<div class="code">' + code + '</div><p class="muted">Write it down and keep it somewhere safe. The old code no longer works.</p>', buttons: [{ label: "I wrote it down", value: true, kind: "btn-primary" }] });
+  });
+}
+
+/* ================================================================ start */
+(async () => {
+  $("#foot").textContent = "Masterpiece Time Clock · Version " + APP_VERSION;
+  if ("serviceWorker" in navigator && location.protocol === "https:" && !inArtifact) navigator.serviceWorker.register("sw.js").catch(() => {});
+  try {
+    const st = await initStore();
+    if (st === "permission") return viewPermission();
+    if (st === "setup") return viewChooseFolder();
+    await enterApp();
+  } catch (e) { showError(e); }
+})();
+if (params.get("storage") === "browser") window.__tc = { D, S, computeWeek, weekOf, addEvent };
+})();
+
+</script>
+</body></html>
